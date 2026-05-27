@@ -30,6 +30,15 @@ supabase/.branches
 supabase/functions/.env
 
 # Local secrets (copy from *.example files)
-.env
-.env.*
 !.env*.example
+
+# OpenNext
+.open-next
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+
+!.env.example
+config.bat
