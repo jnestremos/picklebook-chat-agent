@@ -1,0 +1,1081 @@
+.wrap {
+  --bg: #0b0d10;
+  --bg-elevated: #12151a;
+  --bg-bubble-assistant: #1e2329;
+  --border: rgba(255, 255, 255, 0.08);
+  --text: #e8eaed;
+  --text-muted: #9aa0a6;
+  --accent: #3b82f6;
+  --accent-user: #2563eb;
+  --radius-bubble: 1.125rem;
+  height: 100dvh;
+  max-height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+}
+
+/* —— Top bar (messaging app header) —— */
+.header {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.65rem;
+  padding: 0.65rem 1rem;
+  padding-top: max(0.65rem, env(safe-area-inset-top));
+  background: rgba(11, 13, 16, 0.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+
+.headerTop {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.headerBrand {
+  flex: 1;
+  min-width: 0;
+}
+
+.headerTitle {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.headerSubtitle {
+  margin: 0.2rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+  font-weight: 400;
+  white-space: normal;
+}
+
+.headerHome {
+  flex-shrink: 0;
+  font-size: 0.8125rem;
+  color: var(--accent);
+  text-decoration: none;
+  padding: 0.4rem 0.65rem;
+  border-radius: 8px;
+  line-height: 1.2;
+  margin-top: 0.1rem;
+}
+
+.headerHome:hover {
+  background: rgba(59, 130, 246, 0.12);
+}
+
+/* Court directory (SQL-backed list, scrolls when long) */
+.courtDirectory {
+  flex-shrink: 0;
+  padding: 0.5rem 1rem 0.65rem;
+  border-bottom: 1px solid var(--border);
+  background: rgba(18, 21, 26, 0.94);
+}
+
+.courtDirectoryCollapsed {
+  padding-bottom: 0.45rem;
+}
+
+.courtDirectoryCollapsed .courtDirectoryHeader {
+  margin-bottom: 0;
+}
+
+.courtDirectoryHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
+}
+
+.courtDirectoryToggle {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  color: inherit;
+}
+
+.courtDirectoryToggle:hover .courtDirectoryTitle {
+  color: #cbd5e1;
+}
+
+.courtDirectoryCaret {
+  flex-shrink: 0;
+  display: inline-block;
+  font-size: 0.5625rem;
+  line-height: 1;
+  color: var(--text-muted);
+  width: 0.75rem;
+  transform: translateY(0.5px);
+}
+
+.courtDirectoryTitle {
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.courtDirectoryRefresh {
+  flex-shrink: 0;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.6875rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.courtDirectoryRefresh:hover {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.courtDirectoryError {
+  margin: 0 0 0.35rem;
+  font-size: 0.75rem;
+  color: #f87171;
+}
+
+.courtDirectoryMuted {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.courtDirectoryPanelBody {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-height: 0;
+}
+
+/* `[hidden]` loses to our `display: flex` in some engines; force collapse. */
+.courtDirectoryPanelBodyCollapsed {
+  display: none !important;
+}
+
+.courtDirectoryScroll {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: min(32vh, 12.5rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.courtDirectoryScroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.courtDirectoryScroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 99px;
+}
+
+.courtDirectoryRow {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  width: 100%;
+  padding: 0.45rem 0.65rem;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: transparent;
+  color: var(--text);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.1s ease;
+}
+
+.courtDirectoryRowMain {
+  font-weight: 500;
+  color: #f1f5f9;
+}
+
+.courtDirectoryRowMeta {
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+  font-weight: 400;
+  white-space: normal;
+  word-break: break-word;
+  max-width: 100%;
+}
+
+.courtDirectoryScroll li:last-child .courtDirectoryRow {
+  border-bottom: none;
+}
+
+.courtDirectoryRow:hover {
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.courtDirectoryRow:active {
+  background: rgba(59, 130, 246, 0.14);
+}
+
+/* —— Thread (must shrink inside flex column so overflow-y works) —— */
+.thread {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 1rem 1rem 0.5rem;
+  padding-bottom: env(safe-area-inset-bottom);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.thread::-webkit-scrollbar {
+  width: 6px;
+}
+
+.thread::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 99px;
+}
+
+.emptyState {
+  flex: 1 1 auto;
+  min-height: min(18rem, 50dvh);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2rem 1.5rem;
+  max-width: 20rem;
+  margin: 0 auto;
+}
+
+.emptyIcon {
+  font-size: 2.5rem;
+  margin-bottom: 0.75rem;
+  opacity: 0.85;
+}
+
+.emptyTitle {
+  margin: 0 0 0.5rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.emptyBody {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+/* —— Message rows —— */
+.row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+  max-width: 100%;
+}
+
+.rowUser {
+  flex-direction: row-reverse;
+}
+
+.rowAssistant {
+  flex-direction: row;
+}
+
+.avatar {
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #334155, #1e293b);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  margin-bottom: 1.15rem;
+}
+
+.bubbleCol {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: min(85%, 26rem);
+  min-width: 0;
+}
+
+.rowUser .bubbleCol {
+  align-items: flex-end;
+}
+
+.rowAssistant .bubbleCol {
+  max-width: min(92%, 38rem);
+}
+
+.bubble {
+  padding: 0.65rem 0.9rem;
+  border-radius: var(--radius-bubble);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.rowAssistant .bubble {
+  width: 100%;
+  min-width: 0;
+}
+
+.bubbleUser {
+  background: linear-gradient(180deg, #3d7aed 0%, var(--accent-user) 100%);
+  color: #fff;
+  border-bottom-right-radius: 0.35rem;
+  box-shadow: 0 2px 12px rgba(37, 99, 235, 0.25);
+}
+
+.bubbleAssistant {
+  background: var(--bg-bubble-assistant);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-bottom-left-radius: 0.35rem;
+}
+
+.bubbleError {
+  border-color: rgba(248, 113, 113, 0.35);
+  background: rgba(127, 29, 29, 0.2);
+}
+
+.timestamp {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  margin-top: 0.2rem;
+  padding: 0 0.35rem;
+}
+
+.rowUser .timestamp {
+  text-align: right;
+}
+
+/* Rich assistant text */
+.assistantRich {
+  margin: 0;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.assistantSection {
+  margin: 0 0 0.85rem;
+  padding: 0.55rem 0 0.55rem 0.65rem;
+  border-left: 3px solid rgba(59, 130, 246, 0.45);
+  border-radius: 0 10px 10px 0;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.assistantSection:last-child {
+  margin-bottom: 0;
+}
+
+.assistantHeading {
+  margin: 0 0 0.45rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.35;
+  color: #e2e8f0;
+}
+
+.assistantSection .assistantHeading {
+  margin-top: 0;
+}
+
+.assistantPara {
+  margin: 0 0 0.65rem;
+}
+
+.assistantSection .assistantPara {
+  margin-bottom: 0;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: rgba(232, 234, 237, 0.88);
+}
+
+.assistantPara:last-child {
+  margin-bottom: 0;
+}
+
+.assistantRich > .assistantPara:first-child,
+.assistantRich > .assistantSection:first-child {
+  margin-top: 0;
+}
+
+.assistantList {
+  margin: 0 0 0.65rem;
+  padding-left: 1.05rem;
+}
+
+.assistantListSection {
+  margin-bottom: 0;
+  padding-left: 0.85rem;
+}
+
+.assistantList:last-child {
+  margin-bottom: 0;
+}
+
+.assistantSection .assistantList {
+  margin-bottom: 0;
+}
+
+.assistantListItem {
+  margin: 0.2rem 0;
+  padding-left: 0.2rem;
+  line-height: 1.45;
+}
+
+.assistantListItemMeta {
+  margin: 0.35rem 0 0.15rem;
+  font-weight: 600;
+  color: #f1f5f9;
+  list-style-type: disc;
+}
+
+.assistantListItemSlot {
+  margin: 0.06rem 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  list-style-type: circle;
+}
+
+.assistantListItem strong,
+.assistantPara strong,
+.assistantHeading strong {
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.assistantTableWrap {
+  overflow-x: auto;
+  margin: 0.45rem 0 0;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.assistantTable {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.assistantTable th,
+.assistantTable td {
+  padding: 0.4rem 0.55rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  word-break: break-word;
+}
+
+.assistantTable th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: rgba(15, 23, 42, 0.95);
+  font-weight: 600;
+  color: #e2e8f0;
+  white-space: nowrap;
+}
+
+.assistantTable tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.assistantTable td {
+  color: rgba(232, 234, 237, 0.9);
+  font-variant-numeric: tabular-nums;
+}
+
+.assistantTable td:first-child {
+  font-variant-numeric: normal;
+  font-weight: 500;
+}
+
+.assistantSection .assistantTableWrap {
+  margin-left: -0.1rem;
+  margin-right: 0;
+}
+
+.metaHint {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.dataDetails {
+  display: block;
+  margin-top: 0.65rem;
+  width: 100%;
+  max-width: 100%;
+}
+
+.dataSummary {
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  list-style: none;
+  user-select: none;
+}
+
+.dataSummary::-webkit-details-marker {
+  display: none;
+}
+
+.dataSummary::before {
+  content: '▸ ';
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+
+.dataDetails[open] .dataSummary::before {
+  transform: rotate(90deg);
+}
+
+.dataBlock {
+  margin-top: 0.4rem;
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  max-height: 200px;
+  overflow: auto;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* Typing indicator */
+.typingRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.typingBubble {
+  padding: 0.75rem 1rem;
+  background: var(--bg-bubble-assistant);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-bubble);
+  border-bottom-left-radius: 0.35rem;
+}
+
+.typingDots {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.typingDots span {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--text-muted);
+  animation: bounce 1.2s ease-in-out infinite;
+}
+
+.typingDots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.typingDots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.45;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+/* —— Composer (iMessage-style bar) —— */
+.composerWrap {
+  flex-shrink: 0;
+  padding: 0.5rem 0.75rem 0.75rem;
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, transparent 0%, var(--bg) 30%);
+  border-top: 1px solid var(--border);
+}
+
+.promptHint {
+  margin: 0 auto 0.45rem;
+  max-width: 40rem;
+  padding-left: 0.2rem;
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 1.35rem;
+  padding: 0.35rem 0.35rem 0.35rem 0.85rem;
+  max-width: 40rem;
+  margin: 0 auto;
+}
+
+.composer textarea {
+  flex: 1;
+  min-height: 2.5rem;
+  max-height: 7rem;
+  resize: none;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 0.9375rem;
+  font-family: inherit;
+  line-height: 1.45;
+  padding: 0.5rem 0;
+}
+
+.composer textarea:focus {
+  outline: none;
+}
+
+.composer textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.sendBtn {
+  flex-shrink: 0;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    transform 0.12s ease,
+    opacity 0.12s ease;
+}
+
+.sendBtn:hover:not(:disabled) {
+  transform: scale(1.05);
+}
+
+.sendBtn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.sendBtn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.sendIcon {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.error {
+  color: #f87171;
+  font-size: 0.8125rem;
+  padding: 0.35rem 1rem 0;
+  text-align: center;
+}
+
+/* Structured slot preview (hybrid chat + data) */
+.slotPreview {
+  margin-top: 0.65rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid var(--border);
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.slotPreviewTitle {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 0.45rem;
+}
+
+.slotCalendarBlurb {
+  margin: -0.2rem 0 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.slotCalendarOuter {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  max-height: min(52vh, 26rem);
+  overflow-x: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(0, 0, 0, 0.28);
+  padding: 0.5rem;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.slotCalendarOuter::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.slotCalendarOuter::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+}
+
+.slotCalendarOuter::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.slotVenuesToggle {
+  margin-top: 0.5rem;
+  padding: 0.35rem 0.55rem;
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(59, 130, 246, 0.12);
+  color: #93c5fd;
+  font-size: 0.75rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: center;
+}
+
+.slotVenuesToggle:hover {
+  background: rgba(59, 130, 246, 0.2);
+  color: #bfdbfe;
+}
+
+/* No overflow here: slotCalendarOuter is the single scrollport so thead th
+   position: sticky / top stays pinned when scrolling vertically. */
+.slotUnifiedWrap {
+  min-width: 0;
+}
+
+.slotUnifiedTable {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: max-content;
+  min-width: 100%;
+  font-size: 0.6875rem;
+  line-height: 1.3;
+}
+
+.slotUnifiedCorner {
+  position: sticky;
+  left: 0;
+  top: 0;
+  z-index: 6;
+  min-width: 5.5rem;
+  max-width: 8rem;
+  padding: 0.38rem 0.45rem;
+  text-align: left;
+  vertical-align: bottom;
+  background: rgba(15, 18, 24, 0.99);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+  color: #cbd5e1;
+  font-weight: 700;
+  font-size: 0.625rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.slotUnifiedCourtHead {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  vertical-align: bottom;
+  min-width: 4.75rem;
+  max-width: 8rem;
+  padding: 0.35rem 0.42rem;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-left: none;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(22, 27, 34, 0.99);
+}
+
+.slotUnifiedCourtTitle {
+  display: block;
+  font-weight: 600;
+  color: #f1f5f9;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.slotUnifiedCourtSrc {
+  display: block;
+  margin-top: 0.1rem;
+  font-size: 0.5625rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.slotUnifiedCourtPrice {
+  display: block;
+  margin-top: 0.06rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: #a7f3d0;
+  font-variant-numeric: tabular-nums;
+}
+
+.slotUnifiedTime {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  padding: 0.32rem 0.45rem;
+  text-align: left;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  background: rgba(15, 18, 24, 0.97);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-top: none;
+  color: rgba(226, 232, 240, 0.95);
+}
+
+.slotUnifiedTimeUntimed {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  padding: 0.32rem 0.45rem;
+  text-align: left;
+  vertical-align: top;
+  background: rgba(15, 18, 24, 0.97);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-top: none;
+  max-width: 11rem;
+}
+
+.slotUnifiedUntimedLbl {
+  display: block;
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: #94a3b8;
+  line-height: 1.25;
+}
+
+.slotUnifiedUntimedCap {
+  display: block;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: #e2e8f0;
+  margin-top: 0.12rem;
+  word-break: break-word;
+  white-space: normal;
+}
+
+.slotUnifiedTdOpen {
+  vertical-align: top;
+  text-align: center;
+  padding: 0.28rem 0.35rem;
+  min-width: 4.25rem;
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  border-left: none;
+  border-top: none;
+  background: rgba(34, 197, 94, 0.075);
+}
+
+.slotUnifiedTdEmpty {
+  vertical-align: middle;
+  text-align: center;
+  padding: 0.28rem 0.35rem;
+  min-width: 4.25rem;
+  border: 1px solid rgba(148, 163, 184, 0.08);
+  border-left: none;
+  border-top: none;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.slotUnifiedCellStack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.slotUnifiedSlot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+}
+
+.slotUnifiedRange {
+  font-size: 0.5625rem;
+  color: rgba(226, 232, 240, 0.88);
+  line-height: 1.2;
+  text-align: center;
+}
+
+.slotUnifiedOpen {
+  font-size: 0.625rem;
+  font-weight: 700;
+  color: #86efac;
+}
+
+.slotUnifiedDash {
+  color: rgba(148, 163, 184, 0.35);
+  font-size: 0.875rem;
+}
+
+.slotPreviewList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.slotPreviewCourt {
+  margin: 0 0 0.55rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.slotPreviewCourt:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.slotPreviewCourtHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.slotPreviewVenueWrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.slotPreviewVenue {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.slotPreviewSource {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
+.slotPreviewPrice {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #a7f3d0;
+  font-variant-numeric: tabular-nums;
+}
+
+.slotPreviewTimes {
+  margin: 0;
+  padding-left: 1rem;
+}
+
+.slotPreviewTime {
+  margin: 0.12rem 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.slotBookLink {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.slotBookLink:hover {
+  text-decoration: underline;
+}

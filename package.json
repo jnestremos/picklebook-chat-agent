@@ -1,0 +1,36 @@
+{
+  "name": "picklebook-chat-agent",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "db:diff": "supabase db diff",
+    "db:push": "supabase db push",
+    "db:reset": "supabase db reset",
+    "functions:serve": "supabase functions serve sync-courts --env-file ./supabase/functions/.env",
+    "functions:deploy": "supabase functions deploy"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.5.2",
+    "@supabase/supabase-js": "^2.45.4",
+    "next": "~16.1.6",
+    "openai": "^4.67.3",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.9",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "eslint": "^9.8.0",
+    "eslint-config-next": "^16.1.6",
+    "eslint-config-prettier": "^10.0.0",
+    "prettier": "~3.6.2",
+    "typescript": "~5.9.2"
+  }
+}

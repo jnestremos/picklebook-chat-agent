@@ -1,0 +1,35 @@
+# See https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
+
+# dependencies
+node_modules
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# misc
+/coverage
+npm-debug.log
+yarn-error.log
+*.tsbuildinfo
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Next.js
+.next
+out
+
+# Supabase
+supabase/.temp
+supabase/.branches
+supabase/functions/.env
+
+# Local secrets (copy from *.example files)
+.env
+.env.*
+!.env*.example
