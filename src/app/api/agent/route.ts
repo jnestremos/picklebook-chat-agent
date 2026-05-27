@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { runAgent } from '@/lib/agent/openai-tool-agent';
+import { LLM_API_KEY_HEADER } from '@/lib/chat/llm-api-key';
 import type { ChatTurn } from '@/lib/agent/types';
 
 export const runtime = 'nodejs';
@@ -43,8 +44,16 @@ export async function POST(req: Request) {
   }
   const history = parseHistory(body.conversation_history);
 
+  const userApiKey = req.headers.get(LLM_API_KEY_HEADER)?.trim();
+  if (!userApiKey) {
+    return NextResponse.json(
+      { error: 'Missing API key. Set it in the chat dialog to continue.' },
+      { status: 401 },
+    );
+  }
+
   try {
-    const result = await runAgent(message, history);
+    const result = await runAgent(message, history, userApiKey);
     return NextResponse.json(result);
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : 'Unknown error';

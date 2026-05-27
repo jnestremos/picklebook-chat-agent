@@ -17,7 +17,26 @@ function normalizeCompatBaseUrl(raw: string): string {
   return `${trimmed}/v1`;
 }
 
-function buildOpenAIClient(): { client: OpenAI; model: string } {
+function buildOpenAIClient(userApiKey?: string): { client: OpenAI; model: string } {
+  const keyFromUser = userApiKey?.trim();
+  if (keyFromUser) {
+    const compatBase = process.env.OPENAI_COMPAT_BASE_URL?.trim();
+    const compatModel = process.env.OPENAI_COMPAT_MODEL?.trim();
+    if (compatBase) {
+      return {
+        client: new OpenAI({
+          apiKey: keyFromUser,
+          baseURL: normalizeCompatBaseUrl(compatBase),
+        }),
+        model: compatModel || 'gpt-4o-mini',
+      };
+    }
+    return {
+      client: new OpenAI({ apiKey: keyFromUser }),
+      model: process.env.OPENAI_MODEL?.trim() || 'gpt-4o-mini',
+    };
+  }
+
   // Prefer OpenAI-compatible config when present (Ollama, vLLM, OpenRouter, …)
   const compatBase = process.env.OPENAI_COMPAT_BASE_URL?.trim();
   const compatKey = process.env.OPENAI_COMPAT_API_KEY?.trim();
@@ -35,7 +54,7 @@ function buildOpenAIClient(): { client: OpenAI; model: string } {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error(
-      'No LLM credentials. Set OPENAI_COMPAT_BASE_URL (+ OPENAI_COMPAT_API_KEY, OPENAI_COMPAT_MODEL) or OPENAI_API_KEY.',
+      'No LLM credentials. Provide an API key in the chat dialog or set OPENAI_COMPAT_BASE_URL (+ OPENAI_COMPAT_API_KEY, OPENAI_COMPAT_MODEL) or OPENAI_API_KEY.',
     );
   }
   return {
@@ -91,8 +110,9 @@ async function runTool(
 export async function runAgent(
   userMessage: string,
   history: ChatTurn[],
+  userApiKey?: string,
 ): Promise<AgentResponse> {
-  const { client, model } = buildOpenAIClient();
+  const { client, model } = buildOpenAIClient(userApiKey);
 
   const messages: ChatCompletionMessageParam[] = [
     { role: 'system', content: buildSystemPrompt() },

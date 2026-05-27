@@ -1,6 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { getApiKeyCookie, setApiKeyCookie } from '@/lib/chat/api-key-cookie';
+import { LLM_API_KEY_HEADER } from '@/lib/chat/llm-api-key';
+import { ApiKeyDialog } from './api-key-dialog';
 import { AssistantMessageBody } from './assistant-message';
 import { SearchDataPreview } from './search-data-preview';
 import { CourtDirectoryPanel } from './court-directory';
@@ -56,7 +59,16 @@ export default function ChatPage() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
+  const [apiKey, setApiKey] = useState<string | null>(null);
+  const [apiKeyChecked, setApiKeyChecked] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setApiKey(getApiKeyCookie());
+    setApiKeyChecked(true);
+  }, []);
+
+  const chatUnlocked = apiKey !== null;
 
   /**
    * Supabase realtime pulse — increments whenever `courts` or `slots` change.
@@ -72,7 +84,7 @@ export default function ChatPage() {
 
   const send = useCallback(async () => {
     const text = input.trim();
-    if (!text || loading) return;
+    if (!text || loading || !apiKey) return;
 
     const base = apiBase();
     setConfigError(null);
@@ -88,7 +100,10 @@ export default function ChatPage() {
 
       const res = await fetch(`${base}/api/agent`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          [LLM_API_KEY_HEADER]: apiKey,
+        },
         body: JSON.stringify({
           message: text,
           conversation_history,
@@ -136,7 +151,7 @@ export default function ChatPage() {
     } finally {
       setLoading(false);
     }
-  }, [input, loading]);
+  }, [input, loading, apiKey]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -147,6 +162,18 @@ export default function ChatPage() {
 
   return (
     <div className={styles.wrap}>
+      <ApiKeyDialog
+        open={apiKeyChecked && !chatUnlocked}
+        onSave={(key) => {
+          setApiKeyCookie(key);
+          setApiKey(key);
+        }}
+      />
+
+      <div
+        className={chatUnlocked ? undefined : styles.chatLocked}
+        aria-hidden={!chatUnlocked}
+      >
       <header className={styles.header}>
         <div className={styles.headerTop}>
           <div className={styles.headerBrand}>
@@ -269,7 +296,7 @@ export default function ChatPage() {
             onKeyDown={onKeyDown}
             placeholder="Venue + calendar day (e.g. City Pickle May 15…)"
             rows={2}
-            disabled={loading}
+            disabled={loading || !chatUnlocked}
             aria-label="Message"
             aria-describedby="composer-hint"
           />
@@ -277,7 +304,7 @@ export default function ChatPage() {
             type="button"
             className={styles.sendBtn}
             onClick={() => void send()}
-            disabled={loading || !input.trim()}
+            disabled={loading || !input.trim() || !chatUnlocked}
             aria-label="Send message"
           >
             <svg
@@ -290,6 +317,7 @@ export default function ChatPage() {
             </svg>
           </button>
         </div>
+      </div>
       </div>
     </div>
   );
