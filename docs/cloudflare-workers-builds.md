@@ -31,10 +31,10 @@ These are available when the Worker handles requests. Required for API routes an
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_ANON_KEY` *(or `NEXT_PUBLIC_SUPABASE_ANON_KEY`)*
 - `SUPABASE_SERVICE_ROLE_KEY` — **Secret**
-- `OPENAI_COMPAT_BASE_URL` — Tailscale Funnel URL for your Express auth gateway (e.g. `https://your-machine.ts.net`)
-- `OPENAI_COMPAT_MODEL` — e.g. `qwen2.5:7b-instruct`
+- `OPENAI_COMPAT_BASE_URL` — also in `wrangler.jsonc` `vars` (deployed automatically)
+- `OPENAI_COMPAT_MODEL` — same
 
-No server-side LLM API key is needed when users enter a gateway key in the `/chat` dialog. See [docs/llm-auth-gateway.md](../docs/llm-auth-gateway.md).
+If LLM vars are missing after deploy, confirm `wrangler.jsonc` `vars` is committed and redeploy.
 
 ## Verify
 

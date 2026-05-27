@@ -7,9 +7,12 @@
     "nodejs_compat",
     "nodejs_compat_populate_process_env"
   ],
-  // Production secrets and env vars are NOT read from `.env.local`.
-  // Set them in the Cloudflare dashboard (see README). Use `--keep-vars` on deploy
-  // so dashboard vars are not wiped by wrangler.
+  "vars": {
+    "OPENAI_COMPAT_BASE_URL": "https://joshuaestremos.tailbc344b.ts.net",
+    "OPENAI_COMPAT_MODEL": "qwen2.5:7b-instruct"
+  },
+  // Secrets (SUPABASE_SERVICE_ROLE_KEY, etc.) belong in the Cloudflare dashboard.
+  // Use `--keep-vars` on deploy so dashboard secrets are not removed.
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"

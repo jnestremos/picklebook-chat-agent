@@ -4,6 +4,7 @@ import type {
   ChatCompletionMessageToolCall,
 } from 'openai/resources/chat/completions';
 import { getAnonSupabase } from '@/lib/supabase/server';
+import { readRuntimeEnv } from '@/lib/env/runtime-env';
 import { ALL_TOOLS, listLocations, searchCourts } from './tools';
 import { buildSystemPrompt } from './system-prompt';
 import type { AgentMeta, AgentResponse, ChatTurn, SearchToolArgs, SlotRow } from './types';
@@ -20,11 +21,11 @@ function normalizeCompatBaseUrl(raw: string): string {
 function buildOpenAIClient(userApiKey?: string): { client: OpenAI; model: string } {
   const keyFromUser = userApiKey?.trim();
   if (keyFromUser) {
-    const compatBase = process.env.OPENAI_COMPAT_BASE_URL?.trim();
-    const compatModel = process.env.OPENAI_COMPAT_MODEL?.trim();
+    const compatBase = readRuntimeEnv('OPENAI_COMPAT_BASE_URL');
+    const compatModel = readRuntimeEnv('OPENAI_COMPAT_MODEL');
     if (!compatBase) {
       throw new Error(
-        'OPENAI_COMPAT_BASE_URL is not set. Point it at your Express auth gateway (Tailscale Funnel URL).',
+        'OPENAI_COMPAT_BASE_URL is not set. Add it to wrangler.jsonc vars or Cloudflare dashboard runtime variables.',
       );
     }
     // User key is sent as Authorization: Bearer … for the Express auth layer.
@@ -38,9 +39,9 @@ function buildOpenAIClient(userApiKey?: string): { client: OpenAI; model: string
   }
 
   // Prefer OpenAI-compatible config when present (Ollama, vLLM, OpenRouter, …)
-  const compatBase = process.env.OPENAI_COMPAT_BASE_URL?.trim();
-  const compatKey = process.env.OPENAI_COMPAT_API_KEY?.trim();
-  const compatModel = process.env.OPENAI_COMPAT_MODEL?.trim();
+  const compatBase = readRuntimeEnv('OPENAI_COMPAT_BASE_URL');
+  const compatKey = readRuntimeEnv('OPENAI_COMPAT_API_KEY');
+  const compatModel = readRuntimeEnv('OPENAI_COMPAT_MODEL');
   if (compatBase) {
     return {
       client: new OpenAI({
@@ -51,7 +52,7 @@ function buildOpenAIClient(userApiKey?: string): { client: OpenAI; model: string
     };
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = readRuntimeEnv('OPENAI_API_KEY');
   if (!apiKey) {
     throw new Error(
       'No LLM credentials. Provide an API key in the chat dialog or set OPENAI_COMPAT_BASE_URL (+ OPENAI_COMPAT_API_KEY, OPENAI_COMPAT_MODEL) or OPENAI_API_KEY.',
@@ -59,7 +60,7 @@ function buildOpenAIClient(userApiKey?: string): { client: OpenAI; model: string
   }
   return {
     client: new OpenAI({ apiKey }),
-    model: process.env.OPENAI_MODEL?.trim() || 'gpt-4o-mini',
+    model: readRuntimeEnv('OPENAI_MODEL') || 'gpt-4o-mini',
   };
 }
 
