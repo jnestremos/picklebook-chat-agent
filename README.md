@@ -65,4 +65,59 @@ pnpm dev
    update vault.secrets set secret = 'https://<ref>.supabase.co' where name = 'project_url';
    update vault.secrets set secret = '<service-role-key>'        where name = 'service_role_key';
    ```
-4. Deploy the Next.js app to your host of choice (Vercel, Fly, etc.) with `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and the `OPENAI_*` / `OPENAI_COMPAT_*` keys set.
+4. Deploy the Next.js app — see [Cloudflare Workers](#cloudflare-workers) below or any other host with the same env vars set.
+
+## Cloudflare Workers (Workers Builds from Git)
+
+This app uses [@opennextjs/cloudflare](https://opennext.js.org/cloudflare). **`.env.local` is only for local dev** — Git builds never see it. Copy values from `.env.local` into the Cloudflare dashboard instead.
+
+### 1. Connect the repo
+
+Dashboard → **Workers & Pages** → **picklebook-chat-agent** → **Settings** → **Builds** → **Connect**
+
+The Worker name in the dashboard must match `name` in `wrangler.jsonc` (`picklebook-chat-agent`).
+
+### 2. Build settings
+
+| Setting | Value |
+| --- | --- |
+| Production branch | `main` |
+| Root directory | *(leave empty — repo root)* |
+| Build command | `pnpm cf:build` |
+| Deploy command | `pnpm cf:deploy` |
+| Non-production branch deploy command | `pnpm cf:upload` *(optional; preview URLs)* |
+
+Cloudflare auto-detects **pnpm** from `pnpm-lock.yaml` and runs install before the build command.
+
+### 3. Environment variables (two separate sections)
+
+Build variables are **not** available at runtime. You must set both sections in the dashboard.
+
+**Settings → Builds → Build variables and secrets** (used during `pnpm cf:build`):
+
+| Variable | Secret? |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | no |
+| `NEXT_PUBLIC_ANON_KEY` or `NEXT_PUBLIC_SUPABASE_ANON_KEY` | no |
+
+**Settings → Variables and Secrets** (runtime — used by `/api/*` on each request):
+
+| Variable | Secret? |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | no |
+| `NEXT_PUBLIC_ANON_KEY` or `NEXT_PUBLIC_SUPABASE_ANON_KEY` | no |
+| `SUPABASE_SERVICE_ROLE_KEY` | **yes** |
+| `OPENAI_API_KEY` | **yes** *(or use compat vars below)* |
+| `OPENAI_MODEL` | no |
+| `OPENAI_COMPAT_BASE_URL` | no *(must be public internet — not Tailscale/localhost)* |
+| `OPENAI_COMPAT_API_KEY` | **yes** |
+| `OPENAI_COMPAT_MODEL` | no |
+
+After adding runtime vars, redeploy once (push to `main` or **Retry deployment**). The deploy command uses `--keep-vars` so dashboard runtime vars are not wiped.
+
+### 4. Local deploy (optional)
+
+```bash
+pnpm deploy   # build + deploy from your machine (reads .env.local at build time)
+pnpm preview  # local Worker; copy .dev.vars.example → .dev.vars or use .env.local
+```

@@ -14,9 +14,12 @@
     "db:reset": "supabase db reset",
     "functions:serve": "supabase functions serve sync-courts --env-file ./supabase/functions/.env",
     "functions:deploy": "supabase functions deploy",
-    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
-    "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
+    "cf:build": "opennextjs-cloudflare build",
+    "cf:deploy": "opennextjs-cloudflare deploy -- --keep-vars",
+    "cf:upload": "opennextjs-cloudflare upload -- --keep-vars",
+    "preview": "pnpm cf:build && opennextjs-cloudflare preview",
+    "deploy": "pnpm cf:build && pnpm cf:deploy",
+    "upload": "pnpm cf:build && pnpm cf:upload",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
   },
   "dependencies": {

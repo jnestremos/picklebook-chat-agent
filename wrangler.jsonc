@@ -4,8 +4,12 @@
   "name": "picklebook-chat-agent",
   "compatibility_date": "2026-05-27",
   "compatibility_flags": [
-    "nodejs_compat"
+    "nodejs_compat",
+    "nodejs_compat_populate_process_env"
   ],
+  // Production secrets and env vars are NOT read from `.env.local`.
+  // Set them in the Cloudflare dashboard (see README). Use `--keep-vars` on deploy
+  // so dashboard vars are not wiped by wrangler.
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"

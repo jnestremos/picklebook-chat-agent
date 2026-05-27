@@ -1,0 +1,7 @@
+# Copy to `.dev.vars` for `pnpm preview` (local Worker via wrangler).
+# Do not commit `.dev.vars`. For `pnpm dev`, use `.env.local` instead.
+#
+# Select which Next.js env file set to merge during the OpenNext build:
+NEXTJS_ENV=development
+
+# Same variables as `.env.local.example` — see that file for descriptions.
