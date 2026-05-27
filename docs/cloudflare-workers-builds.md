@@ -31,11 +31,10 @@ These are available when the Worker handles requests. Required for API routes an
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_ANON_KEY` *(or `NEXT_PUBLIC_SUPABASE_ANON_KEY`)*
 - `SUPABASE_SERVICE_ROLE_KEY` — **Secret**
-- `OPENAI_API_KEY` — **Secret** *(if not using compat endpoint)*
-- `OPENAI_MODEL` *(optional)*
-- `OPENAI_COMPAT_BASE_URL` *(public URL only)*
-- `OPENAI_COMPAT_API_KEY` — **Secret** *(optional)*
-- `OPENAI_COMPAT_MODEL`
+- `OPENAI_COMPAT_BASE_URL` — Tailscale Funnel URL for your Express auth gateway (e.g. `https://your-machine.ts.net`)
+- `OPENAI_COMPAT_MODEL` — e.g. `qwen2.5:7b-instruct`
+
+No server-side LLM API key is needed when users enter a gateway key in the `/chat` dialog. See [docs/llm-auth-gateway.md](../docs/llm-auth-gateway.md).
 
 ## Verify
 

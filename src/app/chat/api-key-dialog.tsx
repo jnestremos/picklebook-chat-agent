@@ -46,8 +46,9 @@ export function ApiKeyDialog({ open, onSave }: Props) {
           API key required
         </h2>
         <p id="api-key-dialog-desc" className={styles.apiKeyDesc}>
-          Enter your LLM API key to use the chat. It is stored in a cookie on this
-          device for one week.
+          Enter your gateway API key to use the chat. It is sent to the LLM
+          auth server as a Bearer token and stored in a cookie on this device
+          for one week.
         </p>
         <form className={styles.apiKeyForm} onSubmit={submit}>
           <label className={styles.apiKeyLabel} htmlFor="api-key-input">
@@ -64,7 +65,7 @@ export function ApiKeyDialog({ open, onSave }: Props) {
               setValue(e.target.value);
               if (error) setError(null);
             }}
-            placeholder="sk-… or your provider key"
+            placeholder="Your gateway API key"
             autoComplete="off"
             required
           />

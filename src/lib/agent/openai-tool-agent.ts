@@ -22,18 +22,18 @@ function buildOpenAIClient(userApiKey?: string): { client: OpenAI; model: string
   if (keyFromUser) {
     const compatBase = process.env.OPENAI_COMPAT_BASE_URL?.trim();
     const compatModel = process.env.OPENAI_COMPAT_MODEL?.trim();
-    if (compatBase) {
-      return {
-        client: new OpenAI({
-          apiKey: keyFromUser,
-          baseURL: normalizeCompatBaseUrl(compatBase),
-        }),
-        model: compatModel || 'gpt-4o-mini',
-      };
+    if (!compatBase) {
+      throw new Error(
+        'OPENAI_COMPAT_BASE_URL is not set. Point it at your Express auth gateway (Tailscale Funnel URL).',
+      );
     }
+    // User key is sent as Authorization: Bearer … for the Express auth layer.
     return {
-      client: new OpenAI({ apiKey: keyFromUser }),
-      model: process.env.OPENAI_MODEL?.trim() || 'gpt-4o-mini',
+      client: new OpenAI({
+        apiKey: keyFromUser,
+        baseURL: normalizeCompatBaseUrl(compatBase),
+      }),
+      model: compatModel || 'gpt-4o-mini',
     };
   }
 
