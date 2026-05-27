@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { runAgent } from '@/lib/agent/openai-tool-agent';
+import { formatAgentError } from '@/lib/agent/format-agent-error';
 import { LLM_API_KEY_HEADER } from '@/lib/chat/llm-api-key';
 import type { ChatTurn } from '@/lib/agent/types';
 
@@ -56,8 +57,8 @@ export async function POST(req: Request) {
     const result = await runAgent(message, history, userApiKey);
     return NextResponse.json(result);
   } catch (err) {
-    const errMsg = err instanceof Error ? err.message : 'Unknown error';
-    console.error('[/api/agent] failed', errMsg);
+    const errMsg = formatAgentError(err);
+    console.error('[/api/agent] failed', errMsg, err);
     return NextResponse.json({ error: errMsg }, { status: 500 });
   }
 }

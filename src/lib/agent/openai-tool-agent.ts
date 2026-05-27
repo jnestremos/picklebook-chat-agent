@@ -5,11 +5,17 @@ import type {
 } from 'openai/resources/chat/completions';
 import { getAnonSupabase } from '@/lib/supabase/server';
 import { readRuntimeEnv } from '@/lib/env/runtime-env';
+import { LLM_REQUEST_TIMEOUT_MS, workerFetch } from '@/lib/env/worker-fetch';
 import { ALL_TOOLS, listLocations, searchCourts } from './tools';
 import { buildSystemPrompt } from './system-prompt';
 import type { AgentMeta, AgentResponse, ChatTurn, SearchToolArgs, SlotRow } from './types';
 
 const MAX_TOOL_ITERATIONS = 5;
+
+const openAiTransport = {
+  fetch: workerFetch,
+  timeout: LLM_REQUEST_TIMEOUT_MS,
+} as const;
 
 /** OpenAI-compatible servers (Ollama, vLLM, …) expect base URL to end with `/v1`. */
 function normalizeCompatBaseUrl(raw: string): string {
@@ -33,6 +39,7 @@ function buildOpenAIClient(userApiKey?: string): { client: OpenAI; model: string
       client: new OpenAI({
         apiKey: keyFromUser,
         baseURL: normalizeCompatBaseUrl(compatBase),
+        ...openAiTransport,
       }),
       model: compatModel || 'gpt-4o-mini',
     };
@@ -47,6 +54,7 @@ function buildOpenAIClient(userApiKey?: string): { client: OpenAI; model: string
       client: new OpenAI({
         apiKey: compatKey || 'ollama',
         baseURL: normalizeCompatBaseUrl(compatBase),
+        ...openAiTransport,
       }),
       model: compatModel || 'gpt-4o-mini',
     };
@@ -59,7 +67,7 @@ function buildOpenAIClient(userApiKey?: string): { client: OpenAI; model: string
     );
   }
   return {
-    client: new OpenAI({ apiKey }),
+    client: new OpenAI({ apiKey, ...openAiTransport }),
     model: readRuntimeEnv('OPENAI_MODEL') || 'gpt-4o-mini',
   };
 }
