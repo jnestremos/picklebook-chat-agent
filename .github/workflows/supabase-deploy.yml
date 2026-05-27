@@ -1,4 +1,4 @@
-name: Supabase deploy
+name: Supabase DB Push and Functions Deploy
 
 on:
   push:
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   deploy:
-    name: db push + functions deploy
+    # name: Supabase DB Push and Functions Deploy
     runs-on: ubuntu-latest
 
     env:
