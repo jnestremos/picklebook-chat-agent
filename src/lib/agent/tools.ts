@@ -181,7 +181,7 @@ export const SEARCH_COURTS_TOOL = {
   function: {
     name: 'search_courts',
     description:
-      "Search bookable court slots stored in Supabase. Only rows where `available = true` are returned. Provide a `location` keyword (venue name token) and/or a `manilaDate` (YYYY-MM-DD in Asia/Manila) to narrow the window. Use `datetime` (ISO 8601 UTC) only when the user asked about a specific hour.",
+      'Search open bookable time slots in Supabase. Returns one row per SLOT (a time window on a court), not one row per court — the same court appears on many rows. Only `available = true` slots. Provide `location` and/or `manilaDate` (YYYY-MM-DD, Asia/Manila).',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -216,3 +216,33 @@ export const LIST_LOCATIONS_TOOL = {
 };
 
 export const ALL_TOOLS = [SEARCH_COURTS_TOOL, LIST_LOCATIONS_TOOL];
+
+/** Distinct courts vs total slot rows — helps the LLM avoid "48 courts" when there are 48 slots. */
+export function summarizeSlotSearch(rows: SlotRow[]): {
+  slot_count: number;
+  court_count: number;
+  court_names: string[];
+  locations: string[];
+  note: string;
+} {
+  const courtIds = new Set<number>();
+  const courtNames = new Map<number, string>();
+  const locations = new Set<string>();
+
+  for (const row of rows) {
+    courtIds.add(row.id);
+    const name = row.name?.trim();
+    if (name) courtNames.set(row.id, name);
+    const loc = row.location?.trim();
+    if (loc) locations.add(loc);
+  }
+
+  return {
+    slot_count: rows.length,
+    court_count: courtIds.size,
+    court_names: [...courtNames.values()].sort((a, b) => a.localeCompare(b)),
+    locations: [...locations].sort((a, b) => a.localeCompare(b)),
+    note:
+      'Each row is one bookable time slot. slot_count is open slots; court_count is distinct courts.',
+  };
+}

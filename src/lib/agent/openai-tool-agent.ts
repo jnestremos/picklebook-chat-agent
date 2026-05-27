@@ -6,7 +6,7 @@ import type {
 import { getAnonSupabase } from '@/lib/supabase/server';
 import { readRuntimeEnv } from '@/lib/env/runtime-env';
 import { LLM_REQUEST_TIMEOUT_MS, workerFetch } from '@/lib/env/worker-fetch';
-import { ALL_TOOLS, listLocations, searchCourts } from './tools';
+import { ALL_TOOLS, listLocations, searchCourts, summarizeSlotSearch } from './tools';
 import { buildSystemPrompt } from './system-prompt';
 import type { AgentMeta, AgentResponse, ChatTurn, SearchToolArgs, SlotRow } from './types';
 
@@ -102,7 +102,10 @@ async function runTool(
     const picked = pickSearchArgs(args);
     const rows = await searchCourts(supabase, picked);
     return {
-      content: JSON.stringify({ rows, count: rows.length }),
+      content: JSON.stringify({
+        summary: summarizeSlotSearch(rows),
+        rows,
+      }),
       capturedSearch: picked,
       lastRows: rows,
     };
@@ -130,7 +133,7 @@ export async function runAgent(
       .map((m) => ({ role: m.role, content: m.content }) as ChatCompletionMessageParam),
     {
       role: 'user',
-      content: `[Reply in English only — no Chinese or other languages.]\n${userMessage}`,
+      content: `[English only. Reply like a human concierge — never mention JSON or tools.]\n${userMessage}`,
     },
   ];
 
