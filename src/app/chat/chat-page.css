@@ -1,0 +1,7 @@
+/* Chat route: lock document scroll so only .thread scrolls (fixes prod/mobile clipping). */
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}

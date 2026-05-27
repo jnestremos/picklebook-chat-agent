@@ -62,6 +62,8 @@ export default function ChatPage() {
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [apiKeyChecked, setApiKeyChecked] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const threadRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
 
   useEffect(() => {
     setApiKey(getApiKeyCookie());
@@ -79,8 +81,16 @@ export default function ChatPage() {
   const realtimePulse = useCourtsRealtimePulse();
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (!stickToBottomRef.current) return;
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, loading]);
+
+  const onThreadScroll = useCallback(() => {
+    const el = threadRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    stickToBottomRef.current = distanceFromBottom < 96;
+  }, []);
 
   const send = useCallback(async () => {
     const text = input.trim();
@@ -90,6 +100,7 @@ export default function ChatPage() {
     setConfigError(null);
     const now = Date.now();
     setInput('');
+    stickToBottomRef.current = true;
     setMessages((m) => [...m, { role: 'user', text, sentAt: now }]);
     setLoading(true);
 
@@ -171,7 +182,7 @@ export default function ChatPage() {
       />
 
       <div
-        className={chatUnlocked ? undefined : styles.chatLocked}
+        className={`${styles.chatMain} ${chatUnlocked ? '' : styles.chatLocked}`.trim()}
         aria-hidden={!chatUnlocked}
       >
       <header className={styles.header}>
@@ -202,7 +213,7 @@ export default function ChatPage() {
 
       {configError ? <p className={styles.error}>{configError}</p> : null}
 
-      <div className={styles.thread}>
+      <div className={styles.thread} ref={threadRef} onScroll={onThreadScroll}>
         {messages.length === 0 && !loading ? (
           <div className={styles.emptyState}>
             <div className={styles.emptyIcon} aria-hidden>

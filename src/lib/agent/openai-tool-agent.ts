@@ -130,7 +130,7 @@ export async function runAgent(
       .map((m) => ({ role: m.role, content: m.content }) as ChatCompletionMessageParam),
     {
       role: 'user',
-      content: `[Reply language: English]\n${userMessage}`,
+      content: `[Reply in English only — no Chinese or other languages.]\n${userMessage}`,
     },
   ];
 

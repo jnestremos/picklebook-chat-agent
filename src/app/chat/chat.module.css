@@ -260,7 +260,8 @@
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
   padding: 1rem 1rem 0.5rem;
   padding-bottom: env(safe-area-inset-bottom);
   display: flex;
@@ -750,6 +751,14 @@
   pointer-events: none;
   user-select: none;
   opacity: 0.45;
+}
+
+.chatMain {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .apiKeyOverlay {
