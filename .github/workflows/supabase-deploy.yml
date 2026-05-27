@@ -1,43 +1,28 @@
-name: Supabase DB Push and Functions Deploy
+name: Supabase Deploy
 
 on:
   push:
-    branches: [main]
-    paths:
-      - "supabase/**"
-      - ".github/workflows/supabase-deploy.yml"
-  workflow_dispatch:
-
-# Avoid two deploys racing on the same project.
-concurrency:
-  group: supabase-deploy-${{ github.ref }}
-  cancel-in-progress: false
+    branches:
+      - main
 
 jobs:
   deploy:
-    # name: Supabase DB Push and Functions Deploy
     runs-on: ubuntu-latest
-
-    env:
-      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
-      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Supabase CLI
-        uses: supabase/setup-cli@v2
-        with:
-          version: latest
+        uses: supabase/setup-cli@v1
 
-      - name: Link Supabase project
-        run: |
-          supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+      - name: Link project
+        run: supabase link --project-ref $SUPABASE_PROJECT_REF
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
 
-      - name: Push database migrations
+      - name: Push migrations
         run: supabase db push
-
-      - name: Deploy edge functions
-        run: supabase functions deploy --project-ref "$SUPABASE_PROJECT_REF"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
