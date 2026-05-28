@@ -30,6 +30,10 @@ export type SlotRow = {
 export type SearchToolArgs = {
   location?: string;
   manilaDate?: string;
+  /** Manila local start time HH:MM (24h), inclusive — e.g. 13:00 for 1pm. */
+  manilaTimeFrom?: string;
+  /** Manila local end time HH:MM (24h), exclusive — e.g. 18:00 for 6pm. */
+  manilaTimeTo?: string;
   datetime?: string;
 };
 

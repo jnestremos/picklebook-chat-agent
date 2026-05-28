@@ -2,6 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { bookingSourceLabel, formatVenuePlaceForResponse } from './venue-display';
+import {
+  orderedVenueLocationsInRank,
+  venueLocationFromRow,
+  VENUE_PAGE_SIZE,
+} from './venue-locations';
 import styles from './chat.module.css';
 
 type SlotRow = {
@@ -341,24 +346,38 @@ function renderCell(srList: SlotRow[] | undefined) {
   );
 }
 
+function venueLocationFromCol(col: CourtCol): string {
+  return venueLocationFromRow(col.sample);
+}
+
+function orderedVenueLocationsFromCourts(courts: CourtCol[]): string[] {
+  return orderedVenueLocationsInRank(courts.map((c) => c.sample));
+}
+
 /** One calendar matrix: Manila time down the rows, each court/venue column across. */
 function AllVenuesCalendarGrid({
   prep,
   showAllVenues,
+  displayCourts,
 }: {
   prep: PreparedSlotCalendar;
   showAllVenues: boolean;
+  displayCourts: CourtCol[];
 }) {
   const { cols, sortedCourts, relevantCourtsStrict, timedMsFull, uAxesFull } = prep;
 
   const canNarrow =
     !!relevantCourtsStrict.length && relevantCourtsStrict.length < sortedCourts.length;
   const useNarrowView = canNarrow && !showAllVenues;
-  const displayCourts =
-    useNarrowView ? relevantCourtsStrict.filter((c) => cols.has(c.key)) : sortedCourts;
+  const courtsForGrid =
+    useNarrowView ?
+      displayCourts.filter((c) =>
+        relevantCourtsStrict.some((r) => r.key === c.key),
+      )
+    : displayCourts;
 
-  const timedMsAxis = useNarrowView ? timedMsFromColumns(displayCourts) : timedMsFull;
-  const displayKeys = new Set(displayCourts.map((c) => c.key));
+  const timedMsAxis = useNarrowView ? timedMsFromColumns(courtsForGrid) : timedMsFull;
+  const displayKeys = new Set(courtsForGrid.map((c) => c.key));
   const uAxes = useNarrowView ? uAxesFull.filter((u) => displayKeys.has(u.courtKey)) : uAxesFull;
 
   const manilaDates = new Set<string>();
@@ -368,7 +387,7 @@ function AllVenuesCalendarGrid({
   const axisTimed: AxisTimed[] = [...timedMsAxis].sort((a, b) => a - b).map((ms) => ({ kind: 't', ms }));
   const axisAll: (AxisTimed | AxisUntimed)[] = [...axisTimed, ...uAxes];
 
-  if (displayCourts.length === 0 || axisAll.length === 0) return null;
+  if (courtsForGrid.length === 0 || axisAll.length === 0) return null;
 
   return (
     <div className={styles.slotUnifiedWrap}>
@@ -378,7 +397,7 @@ function AllVenuesCalendarGrid({
             <th scope="col" className={styles.slotUnifiedCorner}>
               Manila time
             </th>
-            {displayCourts.map((c) => {
+            {courtsForGrid.map((c) => {
               const src = venueSource(c.sample);
               const price = priceLabel(c.sample.price);
               return (
@@ -400,7 +419,7 @@ function AllVenuesCalendarGrid({
                   <th scope="row" className={styles.slotUnifiedTime}>
                     {formatManilaTimeRow(ax.ms, multiDay)}
                   </th>
-                  {displayCourts.map((col) => {
+                  {courtsForGrid.map((col) => {
                     const list = col.byRk.get(rk);
                     const has = !!(list && list.length > 0);
                     return (
@@ -428,7 +447,7 @@ function AllVenuesCalendarGrid({
                   </span>
                   <span className={styles.slotUnifiedUntimedCap}>{u.caption}</span>
                 </th>
-                {displayCourts.map((col) => {
+                {courtsForGrid.map((col) => {
                   const rk = `u:${u.caption}`;
                   const hits = col.key === u.courtKey ? col.byRk.get(rk) : undefined;
                   const has = !!(hits && hits.length > 0);
@@ -460,6 +479,7 @@ export function SearchDataPreview({
   meta?: Record<string, unknown>;
 }) {
   const searchHint = pickSearchLocationHint(meta);
+  const hasVenueFilter = !!searchHint?.trim();
 
   const prep = useMemo(() => {
     const r = asSlotRows(data);
@@ -468,30 +488,78 @@ export function SearchDataPreview({
   }, [data, searchHint]);
 
   const [showAllVenues, setShowAllVenues] = useState(false);
+  const [venuePages, setVenuePages] = useState(1);
 
   useEffect(() => {
     setShowAllVenues(false);
+    setVenuePages(1);
   }, [data, searchHint]);
 
   if (!prep) return null;
 
+  const venueLocationOrder = orderedVenueLocationsFromCourts(prep.sortedCourts);
+  const totalVenueCount = venueLocationOrder.length;
+
+  const visibleVenueCount =
+    hasVenueFilter ?
+      totalVenueCount
+    : Math.min(venuePages * VENUE_PAGE_SIZE, totalVenueCount);
+  const visibleVenueNames = venueLocationOrder.slice(0, visibleVenueCount);
+  const visibleVenueSet = new Set(visibleVenueNames);
+
+  const displayCourts =
+    hasVenueFilter ?
+      prep.sortedCourts
+    : prep.sortedCourts.filter((c) => visibleVenueSet.has(venueLocationFromCol(c)));
+
+  const remainingVenues = hasVenueFilter ? 0 : totalVenueCount - visibleVenueCount;
+  const nextVenueBatch = Math.min(VENUE_PAGE_SIZE, remainingVenues);
+
   const narrowable =
-    !!searchHint?.trim() &&
+    hasVenueFilter &&
     prep.relevantCourtsStrict.length > 0 &&
     prep.relevantCourtsStrict.length < prep.sortedCourts.length;
   const hiddenOtherCount =
     narrowable ? prep.sortedCourts.length - prep.relevantCourtsStrict.length : 0;
 
+  const previewTitle =
+    hasVenueFilter ?
+      'Open slots · matching venues'
+    : `Open slots · ${visibleVenueCount} of ${totalVenueCount} venue${totalVenueCount === 1 ? '' : 's'}`;
+
   return (
     <div className={styles.slotPreview} aria-label="Structured search results">
-      <div className={styles.slotPreviewTitle}>Open slots · all venues</div>
+      <div className={styles.slotPreviewTitle}>{previewTitle}</div>
+      {!hasVenueFilter && visibleVenueNames.length > 0 ?
+        <ol className={styles.slotVenuePageList}>
+          {visibleVenueNames.map((name) => (
+            <li key={name} className={styles.slotVenuePageItem}>
+              {name}
+            </li>
+          ))}
+        </ol>
+      : null}
       <p className={styles.slotCalendarBlurb}>
-        Matching columns for your venue search are shown first. Green cells are bookable openings; scroll the
-        grid sideways when viewing every court.
+        {hasVenueFilter ?
+          'Matching columns for your venue search are shown first. Green cells are bookable openings; scroll the grid sideways when viewing every court.'
+        : `Showing the first ${visibleVenueCount} venue location${visibleVenueCount === 1 ? '' : 's'}. Green cells are bookable openings; load more venues below until every location is listed.`}
       </p>
       <div className={styles.slotCalendarOuter}>
-        <AllVenuesCalendarGrid prep={prep} showAllVenues={showAllVenues} />
+        <AllVenuesCalendarGrid
+          prep={prep}
+          showAllVenues={showAllVenues}
+          displayCourts={displayCourts}
+        />
       </div>
+      {!hasVenueFilter && remainingVenues > 0 ?
+        <button
+          type="button"
+          className={styles.slotVenuesToggle}
+          onClick={() => setVenuePages((p) => p + 1)}
+        >
+          {`Show ${nextVenueBatch} more venue${nextVenueBatch === 1 ? '' : 's'} (${visibleVenueCount} of ${totalVenueCount} shown)`}
+        </button>
+      : null}
       {narrowable ?
         <button
           type="button"

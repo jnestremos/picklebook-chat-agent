@@ -33,3 +33,15 @@ export function manilaDateRangeUtc(manilaDate: string): { start: string; end: st
 export function todayManila(): string {
   return manilaDateKey(Date.now());
 }
+
+/** Manila local calendar date + HH:MM → UTC ISO timestamp. */
+export function manilaLocalHmToUtcIso(manilaDate: string, hm: string): string | null {
+  const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(manilaDate.trim());
+  const tm = /^(\d{2}):(\d{2})$/.exec(hm.trim());
+  if (!dm || !tm) return null;
+  const [, y, mo, d] = dm;
+  const [, h, min] = tm;
+  const dt = new Date(`${y}-${mo}-${d}T${h}:${min}:00+08:00`);
+  if (Number.isNaN(dt.getTime())) return null;
+  return dt.toISOString();
+}

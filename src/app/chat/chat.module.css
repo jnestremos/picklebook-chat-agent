@@ -929,6 +929,22 @@
   color: #bfdbfe;
 }
 
+.slotVenuePageList {
+  margin: 0 0 0.45rem;
+  padding: 0 0 0 1.15rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.slotVenuePageItem {
+  margin: 0.12rem 0;
+}
+
+.slotVenuePageItem::marker {
+  color: var(--text-muted);
+}
+
 /* No overflow here: slotCalendarOuter is the single scrollport so thead th
    position: sticky / top stays pinned when scrolling vertically. */
 .slotUnifiedWrap {

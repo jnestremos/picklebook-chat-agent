@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { manilaDateRangeUtc } from './manila';
+import { manilaDateRangeUtc, manilaLocalHmToUtcIso } from './manila';
 import type { SearchToolArgs, SlotRow } from './types';
 
 /**
@@ -94,7 +94,19 @@ export async function searchCourts(
 
   if (args.manilaDate) {
     const range = manilaDateRangeUtc(args.manilaDate);
-    if (range) q = q.gte('datetime', range.start).lt('datetime', range.end);
+    if (range) {
+      let start = range.start;
+      let end = range.end;
+      if (args.manilaTimeFrom) {
+        const fromIso = manilaLocalHmToUtcIso(args.manilaDate, args.manilaTimeFrom);
+        if (fromIso) start = fromIso;
+      }
+      if (args.manilaTimeTo) {
+        const toIso = manilaLocalHmToUtcIso(args.manilaDate, args.manilaTimeTo);
+        if (toIso) end = toIso;
+      }
+      q = q.gte('datetime', start).lt('datetime', end);
+    }
   } else if (args.datetime) {
     const t = Date.parse(args.datetime);
     if (!Number.isNaN(t)) {
@@ -181,7 +193,7 @@ export const SEARCH_COURTS_TOOL = {
   function: {
     name: 'search_courts',
     description:
-      'Search open bookable time slots in Supabase. Returns one row per SLOT (a time window on a court), not one row per court — the same court appears on many rows. Only `available = true` slots. Provide `location` and/or `manilaDate` (YYYY-MM-DD, Asia/Manila).',
+      'Search open bookable time slots in Supabase. Returns one row per SLOT (a time window on a court), not one row per court. Only `available = true` slots. For "6am to 11am" use manilaTimeFrom + manilaTimeTo (a window of many slots) — never use `datetime` for a range; `datetime` is only for a single instant.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -193,12 +205,24 @@ export const SEARCH_COURTS_TOOL = {
         manilaDate: {
           type: 'string',
           pattern: '^\\d{4}-\\d{2}-\\d{2}$',
-          description: 'Manila calendar day to filter slots by, in YYYY-MM-DD.',
+          description: 'Manila calendar day YYYY-MM-DD.',
+        },
+        manilaTimeFrom: {
+          type: 'string',
+          pattern: '^\\d{2}:\\d{2}$',
+          description:
+            'When the user gives a TIME RANGE, set this to the range start in Manila HH:MM (24h), inclusive. "6am to 11am" → "06:00". Returns all slots starting in the window, not one combined slot.',
+        },
+        manilaTimeTo: {
+          type: 'string',
+          pattern: '^\\d{2}:\\d{2}$',
+          description:
+            'When the user gives a TIME RANGE, set this to the range end in Manila HH:MM (24h), exclusive. "6am to 11am" → "11:00".',
         },
         datetime: {
           type: 'string',
           description:
-            'ISO 8601 timestamp (UTC, with Z) for slot windows near a specific hour. Use sparingly.',
+            'Rare: ISO 8601 UTC instant when the user asked for one specific hour only. Do NOT use for ranges like "6am to 11am".',
         },
       },
     },
@@ -216,33 +240,3 @@ export const LIST_LOCATIONS_TOOL = {
 };
 
 export const ALL_TOOLS = [SEARCH_COURTS_TOOL, LIST_LOCATIONS_TOOL];
-
-/** Distinct courts vs total slot rows — helps the LLM avoid "48 courts" when there are 48 slots. */
-export function summarizeSlotSearch(rows: SlotRow[]): {
-  slot_count: number;
-  court_count: number;
-  court_names: string[];
-  locations: string[];
-  note: string;
-} {
-  const courtIds = new Set<number>();
-  const courtNames = new Map<number, string>();
-  const locations = new Set<string>();
-
-  for (const row of rows) {
-    courtIds.add(row.id);
-    const name = row.name?.trim();
-    if (name) courtNames.set(row.id, name);
-    const loc = row.location?.trim();
-    if (loc) locations.add(loc);
-  }
-
-  return {
-    slot_count: rows.length,
-    court_count: courtIds.size,
-    court_names: [...courtNames.values()].sort((a, b) => a.localeCompare(b)),
-    locations: [...locations].sort((a, b) => a.localeCompare(b)),
-    note:
-      'Each row is one bookable time slot. slot_count is open slots; court_count is distinct courts.',
-  };
-}

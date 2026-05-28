@@ -6,11 +6,20 @@ import type {
 import { getAnonSupabase } from '@/lib/supabase/server';
 import { readRuntimeEnv } from '@/lib/env/runtime-env';
 import { LLM_REQUEST_TIMEOUT_MS, workerFetch } from '@/lib/env/worker-fetch';
-import { ALL_TOOLS, listLocations, searchCourts, summarizeSlotSearch } from './tools';
+import { augmentSearchArgsFromUserMessage } from './parse-user-query';
+import { buildFormatterPrompt } from './format-prompt';
+import { ALL_TOOLS, listLocations, searchCourts } from './tools';
 import { buildSystemPrompt } from './system-prompt';
+import {
+  buildDeterministicReply,
+  buildSlotSearchBriefing,
+  filterSlotsByManilaTimeWindow,
+  type SlotSearchBriefing,
+} from './search-briefing';
 import type { AgentMeta, AgentResponse, ChatTurn, SearchToolArgs, SlotRow } from './types';
 
 const MAX_TOOL_ITERATIONS = 5;
+const LLM_TEMPERATURE = 0;
 
 const openAiTransport = {
   fetch: workerFetch,
@@ -34,7 +43,6 @@ function buildOpenAIClient(userApiKey?: string): { client: OpenAI; model: string
         'OPENAI_COMPAT_BASE_URL is not set. Add it to wrangler.jsonc vars or Cloudflare dashboard runtime variables.',
       );
     }
-    // User key is sent as Authorization: Bearer … for the Express auth layer.
     return {
       client: new OpenAI({
         apiKey: keyFromUser,
@@ -45,7 +53,6 @@ function buildOpenAIClient(userApiKey?: string): { client: OpenAI; model: string
     };
   }
 
-  // Prefer OpenAI-compatible config when present (Ollama, vLLM, OpenRouter, …)
   const compatBase = readRuntimeEnv('OPENAI_COMPAT_BASE_URL');
   const compatKey = readRuntimeEnv('OPENAI_COMPAT_API_KEY');
   const compatModel = readRuntimeEnv('OPENAI_COMPAT_MODEL');
@@ -87,27 +94,45 @@ function pickSearchArgs(raw: unknown): SearchToolArgs {
   if (typeof r.location === 'string' && r.location.trim()) out.location = r.location.trim();
   if (typeof r.manilaDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.manilaDate.trim()))
     out.manilaDate = r.manilaDate.trim();
+  if (typeof r.manilaTimeFrom === 'string' && /^\d{2}:\d{2}$/.test(r.manilaTimeFrom.trim()))
+    out.manilaTimeFrom = r.manilaTimeFrom.trim();
+  if (typeof r.manilaTimeTo === 'string' && /^\d{2}:\d{2}$/.test(r.manilaTimeTo.trim()))
+    out.manilaTimeTo = r.manilaTimeTo.trim();
   if (typeof r.datetime === 'string' && r.datetime.trim()) out.datetime = r.datetime.trim();
   return out;
 }
 
+type ToolRunResult = {
+  content: string;
+  capturedSearch?: SearchToolArgs;
+  lastRows?: SlotRow[];
+  briefing?: SlotSearchBriefing;
+};
+
 async function runTool(
   toolCall: ChatCompletionMessageToolCall,
-): Promise<{ content: string; capturedSearch?: SearchToolArgs; lastRows?: SlotRow[] }> {
+  userMessage: string,
+): Promise<ToolRunResult> {
   const supabase = getAnonSupabase();
   const name = toolCall.function.name;
   const args = safeJsonParse(toolCall.function.arguments ?? '{}');
 
   if (name === 'search_courts') {
-    const picked = pickSearchArgs(args);
-    const rows = await searchCourts(supabase, picked);
+    const picked = augmentSearchArgsFromUserMessage(pickSearchArgs(args), userMessage);
+    let rows = await searchCourts(supabase, picked);
+    rows = filterSlotsByManilaTimeWindow(rows, picked.manilaTimeFrom, picked.manilaTimeTo);
+    const briefing = buildSlotSearchBriefing(rows, picked);
     return {
       content: JSON.stringify({
-        summary: summarizeSlotSearch(rows),
-        rows,
+        status: briefing.found ? 'ok' : 'empty',
+        slot_count: briefing.slot_count,
+        court_count: briefing.court_count,
+        venue_count: briefing.venue_count,
+        message: 'Facts recorded. Do not summarize — the formatter will reply to the user.',
       }),
       capturedSearch: picked,
       lastRows: rows,
+      briefing,
     };
   }
 
@@ -117,6 +142,32 @@ async function runTool(
   }
 
   return { content: JSON.stringify({ error: `Unknown tool: ${name}` }) };
+}
+
+async function formatReplyFromBriefing(
+  client: OpenAI,
+  model: string,
+  userMessage: string,
+  briefing: SlotSearchBriefing,
+): Promise<string> {
+  try {
+    const completion = await client.chat.completions.create({
+      model,
+      temperature: LLM_TEMPERATURE,
+      messages: [
+        { role: 'system', content: buildFormatterPrompt() },
+        {
+          role: 'user',
+          content: `USER QUESTION:\n${userMessage}\n\nVERIFIED FACTS:\n${briefing.facts_only}`,
+        },
+      ],
+    });
+    const text = completion.choices[0]?.message?.content?.trim();
+    if (text) return text;
+  } catch {
+    // Fall through to deterministic reply.
+  }
+  return buildDeterministicReply(briefing);
 }
 
 export async function runAgent(
@@ -131,14 +182,12 @@ export async function runAgent(
     ...history
       .filter((m) => m.role === 'user' || m.role === 'assistant')
       .map((m) => ({ role: m.role, content: m.content }) as ChatCompletionMessageParam),
-    {
-      role: 'user',
-      content: `[English only. Reply like a human concierge — never mention JSON or tools.]\n${userMessage}`,
-    },
+    { role: 'user', content: userMessage },
   ];
 
   let lastSearchArgs: SearchToolArgs | undefined;
   let lastRows: SlotRow[] | undefined;
+  let lastBriefing: SlotSearchBriefing | undefined;
 
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i += 1) {
     const completion = await client.chat.completions.create({
@@ -146,7 +195,7 @@ export async function runAgent(
       messages,
       tools: ALL_TOOLS,
       tool_choice: 'auto',
-      temperature: 0.2,
+      temperature: LLM_TEMPERATURE,
     });
 
     const choice = completion.choices[0];
@@ -160,8 +209,16 @@ export async function runAgent(
     if (toolCalls.length === 0) {
       const meta: AgentMeta = {};
       if (lastSearchArgs) meta.search = lastSearchArgs;
+
+      let message: string;
+      if (lastBriefing) {
+        message = await formatReplyFromBriefing(client, model, userMessage, lastBriefing);
+      } else {
+        message = msg.content?.toString().trim() || 'How can I help you find a court?';
+      }
+
       return {
-        message: msg.content?.toString().trim() || '…',
+        message,
         data: lastRows,
         meta: Object.keys(meta).length > 0 ? meta : undefined,
       };
@@ -175,23 +232,32 @@ export async function runAgent(
 
     for (const tc of toolCalls) {
       try {
-        const result = await runTool(tc);
+        const result = await runTool(tc, userMessage);
         if (result.capturedSearch) lastSearchArgs = result.capturedSearch;
         if (result.lastRows) lastRows = result.lastRows;
+        if (result.briefing) lastBriefing = result.briefing;
         messages.push({
           role: 'tool',
           tool_call_id: tc.id,
           content: result.content,
         });
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+        const errMessage = err instanceof Error ? err.message : String(err);
         messages.push({
           role: 'tool',
           tool_call_id: tc.id,
-          content: JSON.stringify({ error: message }),
+          content: JSON.stringify({ error: errMessage }),
         });
       }
     }
+  }
+
+  if (lastBriefing) {
+    return {
+      message: await formatReplyFromBriefing(client, model, userMessage, lastBriefing),
+      data: lastRows,
+      meta: lastSearchArgs ? { search: lastSearchArgs } : undefined,
+    };
   }
 
   return {
