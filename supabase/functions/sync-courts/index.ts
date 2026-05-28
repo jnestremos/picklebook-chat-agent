@@ -5,7 +5,7 @@
 // Flow:
 //   1. POST {SCRAPER_SERVICE_URL}/api/scrape  body: { all: true, maxDays: 1 }
 //   2. Expect { courts: CourtRow[], slots: SlotRow[] }
-//   3. Delete all slots, then all courts (wholesale replace)
+//   3. TRUNCATE courts + slots (restart ids at 1)
 //   4. Batch insert courts, map scraper court.id → DB bigint id
 //   5. Batch insert slots
 //
@@ -222,17 +222,8 @@ function toCourtInsert(c: ScraperCourt): CourtInsertRow {
 async function clearTables(
   supabase: ReturnType<typeof createClient>,
 ): Promise<void> {
-  const { error: slotsErr } = await supabase
-    .from('slots')
-    .delete()
-    .not('id', 'is', null);
-  if (slotsErr) throw new Error(`Delete slots failed: ${slotsErr.message}`);
-
-  const { error: courtsErr } = await supabase
-    .from('courts')
-    .delete()
-    .not('id', 'is', null);
-  if (courtsErr) throw new Error(`Delete courts failed: ${courtsErr.message}`);
+  const { error } = await supabase.rpc('truncate_courts_and_slots');
+  if (error) throw new Error(`Truncate courts/slots failed: ${error.message}`);
 }
 
 Deno.serve(async (req: Request) => {
@@ -261,7 +252,7 @@ Deno.serve(async (req: Request) => {
 
     const CHUNK = 100;
 
-    // 1. Clear existing rows (slots first — FK to courts).
+    // 1. Clear existing rows (TRUNCATE RESTART IDENTITY — ids start at 1 again).
     const clearStarted = Date.now();
     await clearTables(supabase);
     timings.clear_ms = Date.now() - clearStarted;
