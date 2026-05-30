@@ -3,7 +3,7 @@
 // Invoked by pg_cron or POST /functions/v1/sync-courts.
 //
 // Flow:
-//   1. POST {SCRAPER_SERVICE_URL}/api/scrape  body: { all: true, maxDays: 1 }
+//   1. POST {SCRAPER_SERVICE_URL}/api/scrape  body: { all: true, maxDays: 30 }
 //   2. Expect { courts: CourtRow[], slots: SlotRow[] }
 //   3. TRUNCATE courts + slots (restart ids at 1)
 //   4. Batch insert courts, map scraper court.id → DB bigint id
