@@ -1,30 +1,34 @@
 # Picklebook Chat Agent
 
-A thin Next.js 16 chat frontend for pickleball / badminton court availability.
-The LLM, scraper, and database all live in the separate
-[`picklebook-court-scraper`](../picklebook-court-scraper) Cloudflare worker. This
-app just forwards each chat message to that worker's `/query` endpoint and
-renders the answer.
+Next.js chat frontend plus **Supabase court data** (source of truth) and sync tooling.
+Semantic search runs on the separate [`picklebook-court-sync`](../picklebook-court-sync) Cloudflare Worker.
 
 ```
-src/                 Next.js App Router (FE + a single /api proxy route)
-  app/
-    api/query/   POST: proxies { message } to ${COURT_SCRAPER_URL}/query
-    chat/        Chat page (text in, answer out)
-  lib/
-    env/runtime-env.ts   reads COURT_SCRAPER_URL on Workers or local dev
+src/app/              Next.js chat UI + POST /api/query proxy
+supabase/             Postgres schema, pg_cron, Edge Function sync-courts
 ```
 
-## Data flow
+## Data pipeline
 
 ```
-/chat page  --POST { message }-->  /api/query  --POST { question }-->  scraper /query
-                                                <--   { answer }   --
+court-booking-scraper  →  sync-courts (Edge Fn)  →  Supabase courts/slots
+                              ↓
+                    picklebook-court-sync POST /sync/index/workflow
+                              ↓
+                         Vectorize index
+                              ↓
+              chat POST /api/query  →  court-sync POST /query
 ```
 
-The scraper worker owns embedding, the Vectorize lookup, and Workers AI answer
-generation. It is stateless RAG, so only the latest message is sent (no
-conversation history) and no LLM API key is required from the user.
+After each successful `sync-courts` run, the Edge Function triggers
+`POST {COURT_SYNC_WORKER_URL}/sync/index/workflow` with `{ "namespace": "courts" }`
+(10s timeout, fire-and-forget — Vectorize rebuild is async). If the trigger fails,
+`sync-courts` still returns `ok: true`.
+
+Vectorize ids use **`courts.external_id`** and slot composite keys — not bigint `courts.id` /
+`slots.id` (those reset on every truncate).
+
+## Chat frontend
 
 ## Access gate
 
@@ -40,7 +44,35 @@ The chat is protected by a shared secret, `CHAT_ACCESS_KEY`:
 Set it in `.env.local` for dev and as a **secret** in the Cloudflare dashboard
 for production.
 
-## Setup
+## Supabase setup
+
+```bash
+pnpm install
+cp supabase/functions/.env.example supabase/functions/.env   # scraper + court-sync URLs
+cp .env.local.example .env.local                           # chat frontend
+
+supabase start          # optional local stack
+supabase db reset       # apply migrations
+
+pnpm functions:serve    # test sync-courts locally
+pnpm dev                # chat UI
+```
+
+### Edge Function secrets (`supabase secrets set`)
+
+| Secret | Required | Notes |
+| --- | --- | --- |
+| `SCRAPER_SERVICE_URL` | yes | court-booking-scraper base URL (no path) |
+| `SCRAPER_SERVICE_TOKEN` | no | Bearer token for scraper |
+| `COURT_SYNC_WORKER_URL` | yes (prod) | e.g. `https://picklebook-court-sync.estremosjoshua.workers.dev` |
+| `INDEX_SYNC_SECRET` | no | Must match court-sync Worker if set |
+
+Also set Vault entries `project_url` and `service_role_key` in Postgres for pg_cron
+(see `supabase/scripts/setup-vault-secrets.sql`).
+
+Deploy: push to `main` → `.github/workflows/supabase-deploy.yml` runs `db push` + `functions deploy`.
+
+## Setup (chat only)
 
 ```bash
 # 1. Install deps (uses pnpm)
@@ -60,11 +92,14 @@ pnpm dev
 
 ## Useful commands
 
-| Command          | What it does            |
-| ---------------- | ----------------------- |
-| `pnpm dev`       | Run Next.js dev server  |
-| `pnpm typecheck` | `tsc --noEmit`          |
-| `pnpm lint`      | `next lint`             |
+| Command | What it does |
+| --- | --- |
+| `pnpm dev` | Run Next.js dev server |
+| `pnpm db:push` | Push migrations to linked Supabase |
+| `pnpm db:reset` | Reset local Postgres + reapply migrations |
+| `pnpm functions:serve` | Serve `sync-courts` locally |
+| `pnpm functions:deploy` | Deploy Edge Functions |
+| `pnpm typecheck` | `tsc --noEmit` |
 
 ## Cloudflare Workers (Workers Builds from Git)
 
