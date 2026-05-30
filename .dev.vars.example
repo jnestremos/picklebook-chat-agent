@@ -5,5 +5,5 @@
 NEXTJS_ENV=development
 
 # Same variables as `.env.local.example` — see that file for descriptions.
-COURT_SCRAPER_URL=http://localhost:8787
+COURT_SCRAPER_URL=https://picklebook-court-sync.estremosjoshua.workers.dev
 CHAT_ACCESS_KEY=change-me-local-dev

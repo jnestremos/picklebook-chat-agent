@@ -94,7 +94,7 @@ Cloudflare auto-detects **pnpm** from `pnpm-lock.yaml` and runs install before t
 
 | Variable | Secret? | Notes |
 | --- | --- | --- |
-| `COURT_SCRAPER_URL` | no | Public URL of the deployed scraper worker (e.g. `https://picklebook-court-scraper.<account>.workers.dev`). Also set in `wrangler.jsonc` `vars`. |
+| `COURT_SCRAPER_URL` | no | Public URL of the deployed court service (e.g. `https://picklebook-court-sync.estremosjoshua.workers.dev`). Also set in `wrangler.jsonc` `vars`. |
 | `CHAT_ACCESS_KEY` | **yes** | Shared secret required to use the chat. Users enter it once in the dialog. |
 
 After changing runtime vars, redeploy once (push to `main` or **Retry deployment**). The deploy command uses `--keep-vars` so dashboard runtime vars are not wiped.
