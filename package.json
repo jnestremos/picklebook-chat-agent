@@ -9,11 +9,6 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "db:diff": "supabase db diff",
-    "db:push": "supabase db push",
-    "db:reset": "supabase db reset",
-    "functions:serve": "supabase functions serve sync-courts --env-file ./supabase/functions/.env",
-    "functions:deploy": "supabase functions deploy",
     "cf:build": "opennextjs-cloudflare build",
     "cf:deploy": "opennextjs-cloudflare deploy -- --keep-vars",
     "cf:upload": "opennextjs-cloudflare upload -- --keep-vars",
@@ -24,10 +19,7 @@
   },
   "dependencies": {
     "@opennextjs/cloudflare": "^1.19.11",
-    "@supabase/ssr": "^0.5.2",
-    "@supabase/supabase-js": "^2.45.4",
     "next": "~16.1.6",
-    "openai": "^4.67.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

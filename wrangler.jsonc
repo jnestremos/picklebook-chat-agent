@@ -8,11 +8,13 @@
     "nodejs_compat_populate_process_env"
   ],
   "vars": {
-    "OPENAI_COMPAT_BASE_URL": "https://joshuaestremos.tailbc344b.ts.net",
-    "OPENAI_COMPAT_MODEL": "qwen2.5:7b-instruct"
+    // Base URL of the picklebook-court-scraper worker that owns the LLM + DB.
+    // Override per-environment (local dev uses http://localhost:8787).
+    "COURT_SCRAPER_URL": "http://localhost:8787"
   },
-  // Secrets (SUPABASE_SERVICE_ROLE_KEY, etc.) belong in the Cloudflare dashboard.
-  // Use `--keep-vars` on deploy so dashboard secrets are not removed.
+  // CHAT_ACCESS_KEY gates /api/query and is a SECRET: set it in the Cloudflare
+  // dashboard (or `.dev.vars` for local `pnpm preview`), never in `vars`.
+  // Use `--keep-vars` on deploy so dashboard variables/secrets are not removed.
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"
