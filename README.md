@@ -22,7 +22,7 @@ court-booking-scraper  →  sync-courts (Edge Fn)  →  Supabase courts/slots
 
 After each successful `sync-courts` run:
 
-1. **Google Sheets** (optional) — `sync-courts` triggers **`POST {COURT_SYNC_WORKER_URL}/export/sheets`** on picklebook-court-sync (fire-and-forget). Google secrets live on the **Worker**, not Supabase Edge.
+1. **Google Sheets** (optional) — `sync-courts` calls scraper with `exportSheets: true` on **`POST /api/scrape`**. Google secrets live on **court-booking-scraper** (Render `.env`), not the Worker.
 2. **Vectorize** — `POST {COURT_SYNC_WORKER_URL}/sync/index/workflow` with `{ "namespace": "courts" }`
    (10s timeout; rebuild is async). If either optional step fails, `sync-courts` still returns `ok: true`.
 
