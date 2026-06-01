@@ -22,7 +22,7 @@ court-booking-scraper  →  sync-courts (Edge Fn)  →  Supabase courts/slots
 
 After each successful `sync-courts` run:
 
-1. **Google Sheets** (optional) — `sync-courts` triggers **`export-google-sheets`** (fire-and-forget). One **`Availability`** tab, venues as sections, exported in **CPU-sized chunks** (~500 slots each).
+1. **Google Sheets** (optional) — `sync-courts` triggers **`POST {COURT_SYNC_WORKER_URL}/export/sheets`** on picklebook-court-sync (fire-and-forget). Google secrets live on the **Worker**, not Supabase Edge.
 2. **Vectorize** — `POST {COURT_SYNC_WORKER_URL}/sync/index/workflow` with `{ "namespace": "courts" }`
    (10s timeout; rebuild is async). If either optional step fails, `sync-courts` still returns `ok: true`.
 
@@ -67,20 +67,20 @@ pnpm dev                # chat UI
 | `SCRAPER_SERVICE_TOKEN` | no | Bearer token for scraper |
 | `COURT_SYNC_WORKER_URL` | yes (prod) | e.g. `https://picklebook-court-sync.estremosjoshua.workers.dev` |
 | `INDEX_SYNC_SECRET` | no | Must match court-sync Worker if set |
-| `GOOGLE_SHEETS_SPREADSHEET_ID` | no | Spreadsheet ID from the URL |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | no | GCP service account key JSON (Sheets API enabled) |
-| `GOOGLE_SHEETS_TIMEZONE` | no | Default `Asia/Manila` for date columns |
-| `GOOGLE_SHEETS_PRUNE_ORPHANS` | no | `true` to delete tabs for courts no longer in scrape |
+
+Google Sheets secrets (`GOOGLE_SHEETS_*`, `GOOGLE_SERVICE_ACCOUNT_JSON`) are set on **picklebook-court-sync** via `wrangler secret put`, not on Supabase.
 
 ### Google Sheets setup
 
-1. Create a spreadsheet in Google Drive.
-2. In [Google Cloud Console](https://console.cloud.google.com/), create a service account and enable **Google Sheets API**.
-3. Download the JSON key → set `GOOGLE_SERVICE_ACCOUNT_JSON` (entire file as one secret).
-4. Copy the spreadsheet ID from the URL (`/d/<ID>/edit`) → `GOOGLE_SHEETS_SPREADSHEET_ID`.
-5. **Share the spreadsheet** with the service account email (`…@….iam.gserviceaccount.com`) as **Editor**.
+See [picklebook-court-sync](../picklebook-court-sync) README — create spreadsheet, service account, then:
 
-Each sync reloads Supabase, then kicks off chunked export to a single **`Availability`** sheet. Deploy **both** `sync-courts` and `export-google-sheets`. Tune `GOOGLE_SHEETS_SLOT_WINDOW_DAYS` (default 3) and `GOOGLE_SHEETS_SLOTS_PER_CHUNK` (default 500) if CPU limits persist.
+```bash
+cd ../picklebook-court-sync
+npx wrangler secret put GOOGLE_SHEETS_SPREADSHEET_ID
+npx wrangler secret put GOOGLE_SERVICE_ACCOUNT_JSON
+```
+
+Share the spreadsheet with the service account email (Editor). After each `sync-courts` run, the Worker writes one **`Availability`** tab with venue sections.
 
 Also set Vault entries `project_url` and `service_role_key` in Postgres for pg_cron
 (see `supabase/scripts/setup-vault-secrets.sql`).

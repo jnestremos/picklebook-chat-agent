@@ -43,7 +43,7 @@ export type GoogleSheetsSyncResult = {
 
 export type GoogleSheetsExportTrigger = {
   triggered: true;
-  function: 'export-google-sheets';
+  function: 'export/sheets';
 };
 
 export type ExportChunkBody = {
@@ -718,34 +718,32 @@ async function ensureAvailabilitySheet(
 }
 
 export function triggerGoogleSheetsExport(): GoogleSheetsExportTrigger | null {
-  if (!sheetsConfigEnabled() || !parseGoogleServiceAccount()) {
+  const base = Deno.env.get('COURT_SYNC_WORKER_URL')?.trim();
+  if (!base) {
+    console.warn(
+      '[sync-courts] COURT_SYNC_WORKER_URL unset; skipping Google Sheets export',
+    );
     return null;
   }
 
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')?.trim();
-  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')?.trim();
-  if (!supabaseUrl || !serviceRoleKey) {
-    console.warn('[sync-courts] cannot trigger export-google-sheets — missing runtime URL/key');
-    return null;
-  }
+  const token = Deno.env.get('INDEX_SYNC_SECRET')?.trim();
+  const url = `${base.replace(/\/$/, '')}/export/sheets`;
 
-  const url = `${supabaseUrl.replace(/\/$/, '')}/functions/v1/export-google-sheets`;
   fetch(url, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${serviceRoleKey}`,
-      apikey: serviceRoleKey,
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ chunk: 0, startRow: 1 }),
+    body: '{}',
   }).catch((err) => {
     console.warn(
-      '[sync-courts] export-google-sheets trigger failed',
+      '[sync-courts] export/sheets trigger failed',
       err instanceof Error ? err.message : err,
     );
   });
 
-  return { triggered: true, function: 'export-google-sheets' };
+  return { triggered: true, function: 'export/sheets' };
 }
 
 export function scheduleExportChunk(body: ExportChunkBody): void {
@@ -894,7 +892,7 @@ export async function syncCourtsToGoogleSheets(
     return null;
   }
   return {
-    spreadsheetId: sheetsConfigEnabled()!.spreadsheetId,
+    spreadsheetId: '',
     courts: _courts.length,
     venues: 0,
     sheetsCreated: 0,
@@ -904,7 +902,5 @@ export async function syncCourtsToGoogleSheets(
     slotsInExport: 0,
     slotWindowDays: slotWindowDays(),
     formattingApplied: false,
-    chunksTotal: undefined,
-    chunkIndex: 0,
   };
 }

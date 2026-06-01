@@ -8,14 +8,14 @@
 //   3. TRUNCATE courts + slots (restart ids at 1)
 //   4. Batch insert courts, map scraper court.id → DB bigint id
 //   5. Batch insert slots
-//   6. Google Sheets (optional): fire-and-forget export-google-sheets (chunked)
+//   6. Google Sheets (optional): fire-and-forget POST {COURT_SYNC_WORKER_URL}/export/sheets
 //   7. POST {COURT_SYNC_WORKER_URL}/sync/index/workflow — disabled temporarily for Sheets testing
 //
 // Secrets: SCRAPER_SERVICE_URL (public base URL — NOT localhost from Supabase cloud),
 //           SCRAPER_SERVICE_TOKEN (optional),
 //           COURT_SYNC_WORKER_URL (picklebook-court-sync Worker base URL),
 //           INDEX_SYNC_SECRET (optional; must match Worker if set),
-//           GOOGLE_SHEETS_SPREADSHEET_ID + GOOGLE_SERVICE_ACCOUNT_JSON (optional Sheets export)
+//           GOOGLE_SHEETS_* secrets live on picklebook-court-sync Worker (not Supabase Edge)
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import { jsonResponse } from '../_shared/cors.ts';
