@@ -216,46 +216,68 @@ export function escapeSheetRangeTitle(title: string): string {
   return `'${title.replace(/'/g, "''")}'`;
 }
 
-function formatInTz(iso: string, timeZone: string): {
-  date: string;
-  day: string;
-  time: string;
-} {
-  const d = new Date(iso);
-  const date = new Intl.DateTimeFormat('en-PH', {
-    timeZone,
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  }).format(d);
-  const day = new Intl.DateTimeFormat('en-PH', {
-    timeZone,
-    weekday: 'short',
-  }).format(d);
-  const time = new Intl.DateTimeFormat('en-PH', {
-    timeZone,
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  }).format(d);
-  return { date, day, time };
+/** Plain ISO datetime for sheet cells — no UTC time slicing. */
+export function plainDateTimeValue(iso: string | null | undefined): string {
+  if (!iso?.trim()) {
+    return '—';
+  }
+  return iso.replace(/\.\d{3}Z?$/, '').replace('T', ' ').replace(/Z$/, '').trim();
 }
 
-/** Avoid Intl per slot — Edge CPU limit is ~2s for large exports. */
-function formatInTzFast(iso: string): { date: string; day: string; time: string } {
+const weekdayCacheByTz = new Map<string, Map<string, string>>();
+
+/** Long weekday name (Monday, Tuesday, …) cached per date in timezone. */
+export function weekdayNameForIso(
+  iso: string,
+  timeZone: string,
+): string {
+  let cache = weekdayCacheByTz.get(timeZone);
+  if (!cache) {
+    cache = new Map();
+    weekdayCacheByTz.set(timeZone, cache);
+  }
+
+  const dateKey = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(iso));
+
+  let name = cache.get(dateKey);
+  if (!name) {
+    name = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      weekday: 'long',
+    }).format(new Date(iso));
+    cache.set(dateKey, name);
+  }
+  return name;
+}
+
+export function slotStartEndFromSlot(slot: SheetsSlot): { start: string; end: string } {
+  const ts = slot.time_slot?.trim();
+  if (ts) {
+    const m = ts.match(/^(.+?)\s*[-–]\s*(.+)$/);
+    if (m) {
+      return { start: m[1].trim(), end: m[2].trim() };
+    }
+  }
   return {
-    date: iso.slice(0, 10),
-    day: '—',
-    time: iso.slice(11, 16),
+    start: plainDateTimeValue(slot.datetime),
+    end: plainDateTimeValue(slot.datetime_end),
   };
 }
 
-function bookingLinkFormula(url: string | null): string {
-  if (!url?.trim()) {
-    return '';
-  }
-  const safe = url.replace(/"/g, '""');
-  return `=HYPERLINK("${safe}","Book")`;
+export function slotSheetColumns(
+  slot: SheetsSlot,
+  timeZone: string,
+): [string, string, string, string, string] {
+  const date = slot.datetime.slice(0, 10);
+  const day = weekdayNameForIso(slot.datetime, timeZone);
+  const timeSlot = slot.time_slot?.trim() || '—';
+  const { start, end } = slotStartEndFromSlot(slot);
+  return [date, day, timeSlot, start, end];
 }
 
 export function buildVenueSheetValues(
@@ -263,7 +285,6 @@ export function buildVenueSheetValues(
   slotsByCourt: Map<string, SheetsSlot[]>,
   courtNames: Map<string, string>,
   timeZone: string,
-  fastDates = false,
 ): string[][] {
   const updated = new Intl.DateTimeFormat('en-PH', {
     timeZone,
@@ -287,8 +308,6 @@ export function buildVenueSheetValues(
     return byTime !== 0 ? byTime : a.courtName.localeCompare(b.courtName);
   });
 
-  const formatSlot = fastDates ? formatInTzFast : (iso: string) => formatInTz(iso, timeZone);
-
   const courtSummary = venue.courts.map((c) => c.name).join(', ');
 
   const rows: string[][] = [
@@ -299,27 +318,16 @@ export function buildVenueSheetValues(
     ['Booking page', venue.booking_url ?? '—'],
     ['Last sync', `${updated} (${timeZone})`],
     [],
-    ['Court', 'Date', 'Day', 'Time slot', 'Start', 'End', 'Book'],
+    ['Court', 'Date', 'Day', 'Time slot', 'Start', 'End'],
   ];
 
   for (const { courtName, slot } of allSlots) {
-    const start = formatSlot(slot.datetime);
-    const end = slot.datetime_end
-      ? (fastDates ? formatInTzFast(slot.datetime_end).time : formatInTz(slot.datetime_end, timeZone).time)
-      : '—';
-    rows.push([
-      courtName,
-      start.date,
-      start.day,
-      slot.time_slot?.trim() || start.time,
-      start.time,
-      end,
-      bookingLinkFormula(slot.booking_url),
-    ]);
+    const [date, day, timeSlot, start, end] = slotSheetColumns(slot, timeZone);
+    rows.push([courtName, date, day, timeSlot, start, end]);
   }
 
   if (allSlots.length === 0) {
-    rows.push(['(no available slots in this sync)', '', '', '', '', '', '']);
+    rows.push(['(no available slots in this sync)', '', '', '', '', '']);
   }
 
   return rows;
@@ -330,7 +338,6 @@ export function buildCourtSheetValues(
   court: SheetsCourt,
   slots: SheetsSlot[],
   timeZone: string,
-  fastDates = false,
 ): string[][] {
   const updated = new Intl.DateTimeFormat('en-PH', {
     timeZone,
@@ -342,8 +349,6 @@ export function buildCourtSheetValues(
     .filter((s) => s.available)
     .sort((a, b) => a.datetime.localeCompare(b.datetime));
 
-  const formatSlot = fastDates ? formatInTzFast : (iso: string) => formatInTz(iso, timeZone);
-
   const rows: string[][] = [
     ['Court', court.name],
     ['Location', court.location ?? '—'],
@@ -352,26 +357,15 @@ export function buildCourtSheetValues(
     ['Booking page', court.booking_url ?? '—'],
     ['Last sync', `${updated} (${timeZone})`],
     [],
-    ['Date', 'Day', 'Time slot', 'Start', 'End', 'Book'],
+    ['Date', 'Day', 'Time slot', 'Start', 'End'],
   ];
 
   for (const slot of sorted) {
-    const start = formatSlot(slot.datetime);
-    const end = slot.datetime_end
-      ? (fastDates ? formatInTzFast(slot.datetime_end).time : formatInTz(slot.datetime_end, timeZone).time)
-      : '—';
-    rows.push([
-      start.date,
-      start.day,
-      slot.time_slot?.trim() || start.time,
-      start.time,
-      end,
-      bookingLinkFormula(slot.booking_url),
-    ]);
+    rows.push(slotSheetColumns(slot, timeZone));
   }
 
   if (sorted.length === 0) {
-    rows.push(['(no available slots in this sync)', '', '', '', '', '']);
+    rows.push(['(no available slots in this sync)', '', '', '', '']);
   }
 
   return rows;
@@ -523,7 +517,7 @@ async function applyReadableFormatting(
 
     const headerRow = title === INDEX_SHEET_TITLE ? 4 : 7;
     const frozenRows = title === INDEX_SHEET_TITLE ? 5 : 8;
-    const columnCount = title === INDEX_SHEET_TITLE ? 5 : 7;
+    const columnCount = title === INDEX_SHEET_TITLE ? 5 : 6;
 
     requests.push({
       repeatCell: {
@@ -662,7 +656,6 @@ export async function syncCourtsToGoogleSheets(
 
   const valueUpdates: { range: string; values: string[][] }[] = [];
   const formattingApplied = shouldApplyFormatting(venues.length, exportSlots.length);
-  const fastDates = !formattingApplied;
 
   valueUpdates.push({
     range: `${escapeSheetRangeTitle(INDEX_SHEET_TITLE)}!A1`,
@@ -682,7 +675,6 @@ export async function syncCourtsToGoogleSheets(
         slotsByCourt,
         courtNames,
         timeZone,
-        fastDates,
       ),
     });
   }

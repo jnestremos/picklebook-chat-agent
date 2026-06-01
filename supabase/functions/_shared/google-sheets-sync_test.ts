@@ -5,6 +5,8 @@ import {
   filterSlotsForSheetsExport,
   groupCourtsByVenue,
   sheetTitleForCourt,
+  slotSheetColumns,
+  slotStartEndFromSlot,
   venueKeyForCourt,
 } from './google-sheets-sync.ts';
 
@@ -75,6 +77,40 @@ Deno.test('buildCourtSheetValues includes header and sorted slots', () => {
   assertEquals(values[7][0], 'Date');
   assertEquals(values.length, 10);
   assertEquals(values[8][2], '10:00 AM');
+  assertEquals(values[8][3], '2026-06-02 10:00:00');
+  assertEquals(values[8][4], '2026-06-02 11:00:00');
+});
+
+Deno.test('slotStartEndFromSlot splits time_slot range for Start and End', () => {
+  const { start, end } = slotStartEndFromSlot({
+    court_scraper_id: 'c1',
+    datetime: '2026-06-01T15:00:00.000Z',
+    datetime_end: '2026-06-01T16:00:00.000Z',
+    time_slot: '11:00 pm - 12:00 am',
+    available: true,
+    booking_url: null,
+  });
+  assertEquals(start, '11:00 pm');
+  assertEquals(end, '12:00 am');
+});
+
+Deno.test('slotSheetColumns fills weekday name', () => {
+  const cols = slotSheetColumns(
+    {
+      court_scraper_id: 'c1',
+      datetime: '2026-06-01T02:00:00.000Z',
+      datetime_end: '2026-06-01T03:00:00.000Z',
+      time_slot: '10:00 am - 11:00 am',
+      available: true,
+      booking_url: null,
+    },
+    'Asia/Manila',
+  );
+  assertEquals(cols[0], '2026-06-01');
+  assertEquals(cols[1], 'Monday');
+  assertEquals(cols[2], '10:00 am - 11:00 am');
+  assertEquals(cols[3], '10:00 am');
+  assertEquals(cols[4], '11:00 am');
 });
 
 Deno.test('buildVenueSheetValues merges courts into one table', () => {
@@ -107,7 +143,7 @@ Deno.test('buildVenueSheetValues merges courts into one table', () => {
     ],
   ]);
   const courtNames = new Map([['c1', 'Court 1'], ['c2', 'Court 2']]);
-  const values = buildVenueSheetValues(venue, slotsByCourt, courtNames, 'Asia/Manila', true);
+  const values = buildVenueSheetValues(venue, slotsByCourt, courtNames, 'Asia/Manila');
   assertEquals(values[0][0], 'Venue');
   assertEquals(values[7][0], 'Court');
   assertEquals(values[8][0], 'Court 2');

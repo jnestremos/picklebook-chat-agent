@@ -80,7 +80,7 @@ pnpm dev                # chat UI
 4. Copy the spreadsheet ID from the URL (`/d/<ID>/edit`) → `GOOGLE_SHEETS_SPREADSHEET_ID`.
 5. **Share the spreadsheet** with the service account email (`…@….iam.gserviceaccount.com`) as **Editor**.
 
-Each sync refreshes **`_Index`** plus **one sheet per venue** (courts at the same location share a tab; fallback is booking URL). Columns: Court, Date, Day, Time slot, Start, End, Book link.
+Each sync refreshes **`_Index`** plus **one sheet per venue** (courts at the same location share a tab; fallback is booking URL). Columns: Court, Date, Day, Time slot, Start, End.
 
 Also set Vault entries `project_url` and `service_role_key` in Postgres for pg_cron
 (see `supabase/scripts/setup-vault-secrets.sql`).
