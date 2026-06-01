@@ -1,6 +1,8 @@
 import { assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts';
 import {
+  buildCombinedSheetValues,
   buildCourtSheetValues,
+  buildVenueSectionRows,
   buildVenueSheetValues,
   filterSlotsForSheetsExport,
   groupCourtsByVenue,
@@ -113,7 +115,7 @@ Deno.test('slotSheetColumns fills weekday name', () => {
   assertEquals(cols[4], '11:00 am');
 });
 
-Deno.test('buildVenueSheetValues merges courts into one table', () => {
+Deno.test('buildVenueSectionRows merges courts into one table', () => {
   const venue = groupCourtsByVenue([
     { id: 'c1', name: 'Court 1', location: 'BGC Hub', ...baseCourt },
     { id: 'c2', name: 'Court 2', location: 'BGC Hub', ...baseCourt },
@@ -143,11 +145,46 @@ Deno.test('buildVenueSheetValues merges courts into one table', () => {
     ],
   ]);
   const courtNames = new Map([['c1', 'Court 1'], ['c2', 'Court 2']]);
-  const values = buildVenueSheetValues(venue, slotsByCourt, courtNames, 'Asia/Manila');
+  const values = buildVenueSectionRows(venue, slotsByCourt, courtNames, 'Asia/Manila');
   assertEquals(values[0][0], 'Venue');
-  assertEquals(values[7][0], 'Court');
-  assertEquals(values[8][0], 'Court 2');
-  assertEquals(values[9][0], 'Court 1');
+  assertEquals(values[6][0], 'Court');
+  assertEquals(values[7][0], 'Court 2');
+  assertEquals(values[8][0], 'Court 1');
+});
+
+Deno.test('buildCombinedSheetValues stacks venues with blank separators', () => {
+  const venues = groupCourtsByVenue([
+    { id: 'c1', name: 'Court 1', location: 'BGC Hub', ...baseCourt },
+    { id: 'c2', name: 'Court 2', location: 'Quezon City', ...baseCourt },
+  ]);
+  const slotsByCourt = new Map([
+    [
+      'c1',
+      [{
+        court_scraper_id: 'c1',
+        datetime: '2026-06-02T10:00:00.000Z',
+        datetime_end: null,
+        time_slot: '10:00 AM',
+        available: true,
+        booking_url: null,
+      }],
+    ],
+  ]);
+  const courtNames = new Map([['c1', 'Court 1'], ['c2', 'Court 2']]);
+  const values = buildCombinedSheetValues(
+    venues,
+    slotsByCourt,
+    courtNames,
+    'Asia/Manila',
+    7,
+  );
+  assertEquals(values[0][0], 'Picklebook — court availability');
+  assertEquals(values[4][0], 'Venue');
+  assertEquals(values[4][1], 'BGC Hub');
+  assertEquals(values[11][0], 'Court 1');
+  assertEquals(values[12][0], '');
+  assertEquals(values[13][0], 'Venue');
+  assertEquals(values[13][1], 'Quezon City');
 });
 
 Deno.test('filterSlotsForSheetsExport keeps available slots in window', () => {

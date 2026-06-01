@@ -22,7 +22,7 @@ court-booking-scraper  →  sync-courts (Edge Fn)  →  Supabase courts/slots
 
 After each successful `sync-courts` run:
 
-1. **Google Sheets** (optional) — one tab per **venue** (courts grouped inside), slots in a readable table; `_Index` lists all venues.
+1. **Google Sheets** (optional) — one **`Availability`** tab; each venue is a section (header + slot table), separated by blank rows.
 2. **Vectorize** — `POST {COURT_SYNC_WORKER_URL}/sync/index/workflow` with `{ "namespace": "courts" }`
    (10s timeout; rebuild is async). If either optional step fails, `sync-courts` still returns `ok: true`.
 
@@ -80,7 +80,7 @@ pnpm dev                # chat UI
 4. Copy the spreadsheet ID from the URL (`/d/<ID>/edit`) → `GOOGLE_SHEETS_SPREADSHEET_ID`.
 5. **Share the spreadsheet** with the service account email (`…@….iam.gserviceaccount.com`) as **Editor**.
 
-Each sync refreshes **`_Index`** plus **one sheet per venue** (courts at the same location share a tab; fallback is booking URL). Columns: Court, Date, Day, Time slot, Start, End.
+Each sync refreshes a single sheet (default tab name **`Availability`**) with all venues stacked: venue metadata, then columns Court, Date, Day, Time slot, Start, End. Set `GOOGLE_SHEETS_PRUNE_ORPHANS=true` once to remove old per-venue tabs.
 
 Also set Vault entries `project_url` and `service_role_key` in Postgres for pg_cron
 (see `supabase/scripts/setup-vault-secrets.sql`).

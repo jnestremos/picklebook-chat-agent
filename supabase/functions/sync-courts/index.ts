@@ -8,7 +8,7 @@
 //   3. TRUNCATE courts + slots (restart ids at 1)
 //   4. Batch insert courts, map scraper court.id → DB bigint id
 //   5. Batch insert slots
-//   6. Google Sheets (optional): one tab per venue, courts grouped inside
+//   6. Google Sheets (optional): single tab, venue sections stacked vertically
 //   7. POST {COURT_SYNC_WORKER_URL}/sync/index/workflow — disabled temporarily for Sheets testing
 //
 // Secrets: SCRAPER_SERVICE_URL (public base URL — NOT localhost from Supabase cloud),
