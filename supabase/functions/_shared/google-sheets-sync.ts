@@ -33,10 +33,32 @@ export type GoogleSheetsSyncResult = {
   sheetsUpdated: number;
   sheetsPruned: number;
   slotsWritten: number;
-  /** Slots after GOOGLE_SHEETS_SLOT_WINDOW_DAYS filter (before sheet build). */
   slotsInExport: number;
   slotWindowDays: number;
   formattingApplied: boolean;
+  /** Present when export continues in chained Edge invocations. */
+  chunksTotal?: number;
+  chunkIndex?: number;
+};
+
+export type GoogleSheetsExportTrigger = {
+  triggered: true;
+  function: 'export-google-sheets';
+};
+
+export type ExportChunkBody = {
+  chunk?: number;
+  startRow?: number;
+  /** Venue keys for this chunk. */
+  venueKeys?: string[];
+  chunksTotal?: number;
+  /** Full chunk plan from chunk 0 — avoids re-scanning slot counts. */
+  venueKeyChunks?: string[][];
+};
+
+export type ExportChunkRunResult = {
+  result: GoogleSheetsSyncResult;
+  nextRow: number;
 };
 
 export type VenueGroup = {
@@ -84,7 +106,27 @@ function slotWindowDays(): number {
   if (raw && Number.isFinite(Number(raw))) {
     return Math.min(30, Math.max(1, Math.floor(Number(raw))));
   }
-  return 7;
+  return 3;
+}
+
+function maxSlotsPerExport(): number {
+  const raw = Deno.env.get('GOOGLE_SHEETS_MAX_SLOTS')?.trim();
+  if (raw && Number.isFinite(Number(raw))) {
+    return Math.max(200, Math.floor(Number(raw)));
+  }
+  return 2500;
+}
+
+export function slotsPerExportChunk(): number {
+  const raw = Deno.env.get('GOOGLE_SHEETS_SLOTS_PER_CHUNK')?.trim();
+  if (raw && Number.isFinite(Number(raw))) {
+    return Math.min(1500, Math.max(150, Math.floor(Number(raw))));
+  }
+  return 500;
+}
+
+function sortVenueSlots(): boolean {
+  return envFlagTrue('GOOGLE_SHEETS_SORT_SLOTS');
 }
 
 function envFlagTrue(name: string): boolean {
@@ -92,15 +134,9 @@ function envFlagTrue(name: string): boolean {
   return v === '1' || v === 'true' || v === 'yes';
 }
 
-/** Formatting many tabs burns Edge CPU; skip unless explicitly enabled. */
-function shouldApplyFormatting(venues: number, slotsInExport: number): boolean {
-  if (envFlagTrue('GOOGLE_SHEETS_APPLY_FORMATTING')) {
-    return true;
-  }
-  if (envFlagTrue('GOOGLE_SHEETS_SKIP_FORMATTING')) {
-    return false;
-  }
-  return venues <= 40 && slotsInExport <= 3000;
+/** Formatting burns Edge CPU — off unless explicitly enabled. */
+function shouldApplyFormatting(_venues: number, _slotsInExport: number): boolean {
+  return envFlagTrue('GOOGLE_SHEETS_APPLY_FORMATTING');
 }
 
 export function filterSlotsForSheetsExport(
@@ -276,6 +312,66 @@ export function slotStartEndFromSlot(slot: SheetsSlot): { start: string; end: st
   };
 }
 
+export function prewarmWeekdayCache(slots: SheetsSlot[], timeZone: string): void {
+  const seen = new Set<string>();
+  for (const slot of slots) {
+    const prefix = slot.datetime.slice(0, 10);
+    if (seen.has(prefix)) {
+      continue;
+    }
+    seen.add(prefix);
+    weekdayNameForIso(slot.datetime, timeZone);
+  }
+}
+
+export function packVenueKeyChunks(
+  venues: VenueGroup[],
+  slotCountByCourtId: Map<string, number>,
+  maxSlotsPerChunk: number,
+): string[][] {
+  const chunks: string[][] = [];
+  let current: string[] = [];
+  let slotCount = 0;
+
+  const venueSlots = (venue: VenueGroup): number =>
+    venue.courts.reduce((sum, court) => sum + (slotCountByCourtId.get(court.id) ?? 0), 0);
+
+  for (const venue of venues) {
+    const count = venueSlots(venue);
+    if (current.length > 0 && slotCount + count > maxSlotsPerChunk) {
+      chunks.push(current);
+      current = [];
+      slotCount = 0;
+    }
+    current.push(venue.key);
+    slotCount += count;
+  }
+
+  if (current.length > 0) {
+    chunks.push(current);
+  }
+
+  return chunks;
+}
+
+export function buildSheetPreambleRows(
+  timeZone: string,
+  windowDays: number,
+): string[][] {
+  const updated = new Intl.DateTimeFormat('en-PH', {
+    timeZone,
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date());
+
+  return [
+    ['Picklebook — court availability'],
+    [`Last sync: ${updated} (${timeZone}) · next ${windowDays} days`],
+    ['All venues below — scroll or filter by venue name.'],
+    [],
+  ];
+}
+
 export function slotSheetColumns(
   slot: SheetsSlot,
   timeZone: string,
@@ -304,10 +400,14 @@ export function buildVenueSectionRows(
     }
   }
 
-  allSlots.sort((a, b) => {
-    const byTime = a.slot.datetime.localeCompare(b.slot.datetime);
-    return byTime !== 0 ? byTime : a.courtName.localeCompare(b.courtName);
-  });
+  if (sortVenueSlots()) {
+    allSlots.sort((a, b) => {
+      const byTime = a.slot.datetime.localeCompare(b.slot.datetime);
+      return byTime !== 0 ? byTime : a.courtName.localeCompare(b.courtName);
+    });
+  }
+
+  prewarmWeekdayCache(allSlots.map((row) => row.slot), timeZone);
 
   const courtSummary = venue.courts.map((c) => c.name).join(', ');
 
@@ -340,18 +440,7 @@ export function buildCombinedSheetValues(
   timeZone: string,
   windowDays: number,
 ): string[][] {
-  const updated = new Intl.DateTimeFormat('en-PH', {
-    timeZone,
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date());
-
-  const rows: string[][] = [
-    ['Picklebook — court availability'],
-    [`Last sync: ${updated} (${timeZone}) · next ${windowDays} days`],
-    ['All venues below — scroll or filter by venue name.'],
-    [],
-  ];
+  const rows = buildSheetPreambleRows(timeZone, windowDays);
 
   for (let i = 0; i < venues.length; i++) {
     if (i > 0) {
@@ -552,51 +641,51 @@ async function applySingleSheetFormatting(
   ]);
 }
 
-export async function syncCourtsToGoogleSheets(
-  courts: SheetsCourt[],
-  slots: SheetsSlot[],
-): Promise<GoogleSheetsSyncResult | null> {
-  const config = sheetsConfigEnabled();
-  if (!config) {
-    console.warn(
-      '[sync-courts] GOOGLE_SHEETS_SPREADSHEET_ID unset; skipping Google Sheets',
+async function valuesPut(
+  accessToken: string,
+  spreadsheetId: string,
+  range: string,
+  values: string[][],
+): Promise<void> {
+  const res = await sheetsFetch(
+    accessToken,
+    `/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
+    { method: 'PUT', body: JSON.stringify({ values }) },
+  );
+  if (!res.ok) {
+    throw new Error(
+      `Sheets values PUT ${res.status}: ${(await res.text()).slice(0, 400)}`,
     );
-    return null;
   }
+}
 
-  const serviceAccount = parseGoogleServiceAccount();
-  if (!serviceAccount) {
-    console.warn(
-      '[sync-courts] GOOGLE_SERVICE_ACCOUNT_JSON unset; skipping Google Sheets',
-    );
-    return null;
+async function writeRowsAt(
+  accessToken: string,
+  spreadsheetId: string,
+  sheetTitle: string,
+  startRow: number,
+  values: string[][],
+): Promise<number> {
+  if (values.length === 0) {
+    return startRow;
   }
+  const range = `${escapeSheetRangeTitle(sheetTitle)}!A${startRow}`;
+  await valuesPut(accessToken, spreadsheetId, range, values);
+  return startRow + values.length;
+}
 
-  const timeZone = displayTimezone();
-  const windowDays = slotWindowDays();
-  const exportSlots = filterSlotsForSheetsExport(slots, windowDays);
-  const accessToken = await getGoogleAccessToken(serviceAccount);
-  const { spreadsheetId } = config;
-
-  const venues = groupCourtsByVenue(courts);
-  const courtNames = new Map(courts.map((c) => [c.id, c.name]));
-  const sheetTitle = availabilitySheetTitle();
-
-  const slotsByCourt = new Map<string, SheetsSlot[]>();
-  for (const slot of exportSlots) {
-    const list = slotsByCourt.get(slot.court_scraper_id) ?? [];
-    list.push(slot);
-    slotsByCourt.set(slot.court_scraper_id, list);
-  }
-
+async function ensureAvailabilitySheet(
+  accessToken: string,
+  spreadsheetId: string,
+  sheetTitle: string,
+  clearSheet: boolean,
+): Promise<{ sheetId: number; sheetsCreated: number; sheetsPruned: number }> {
   let sheetMetas = await getSpreadsheetSheets(accessToken, spreadsheetId);
-  const titleToMeta = new Map(sheetMetas.map((s) => [s.title, s]));
-
   const batchRequests: Record<string, unknown>[] = [];
   let sheetsCreated = 0;
   let sheetsPruned = 0;
 
-  if (!titleToMeta.has(sheetTitle)) {
+  if (!sheetMetas.some((s) => s.title === sheetTitle)) {
     batchRequests.push({ addSheet: { properties: { title: sheetTitle } } });
     sheetsCreated += 1;
   }
@@ -620,46 +709,202 @@ export async function syncCourtsToGoogleSheets(
     throw new Error(`Google Sheets tab "${sheetTitle}" not found after setup`);
   }
 
-  const combinedValues = buildCombinedSheetValues(
-    venues,
-    slotsByCourt,
-    courtNames,
-    timeZone,
-    windowDays,
-  );
+  if (clearSheet) {
+    const sheetRange = escapeSheetRangeTitle(sheetTitle);
+    await valuesClear(accessToken, spreadsheetId, `${sheetRange}!A:F`);
+  }
 
-  const sheetRange = escapeSheetRangeTitle(sheetTitle);
-  await valuesClear(accessToken, spreadsheetId, `${sheetRange}!A:F`);
+  return { sheetId: targetSheet.sheetId, sheetsCreated, sheetsPruned };
+}
 
-  await valuesBatchUpdate(accessToken, spreadsheetId, [{
-    range: `${sheetRange}!A1`,
-    values: combinedValues,
-  }]);
+export function triggerGoogleSheetsExport(): GoogleSheetsExportTrigger | null {
+  if (!sheetsConfigEnabled() || !parseGoogleServiceAccount()) {
+    return null;
+  }
 
-  const formattingApplied = shouldApplyFormatting(venues.length, exportSlots.length);
-  if (formattingApplied) {
-    await applySingleSheetFormatting(
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')?.trim();
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')?.trim();
+  if (!supabaseUrl || !serviceRoleKey) {
+    console.warn('[sync-courts] cannot trigger export-google-sheets — missing runtime URL/key');
+    return null;
+  }
+
+  const url = `${supabaseUrl.replace(/\/$/, '')}/functions/v1/export-google-sheets`;
+  fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${serviceRoleKey}`,
+      apikey: serviceRoleKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ chunk: 0, startRow: 1 }),
+  }).catch((err) => {
+    console.warn(
+      '[sync-courts] export-google-sheets trigger failed',
+      err instanceof Error ? err.message : err,
+    );
+  });
+
+  return { triggered: true, function: 'export-google-sheets' };
+}
+
+export function scheduleExportChunk(body: ExportChunkBody): void {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')?.trim();
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')?.trim();
+  if (!supabaseUrl || !serviceRoleKey) {
+    return;
+  }
+
+  const url = `${supabaseUrl.replace(/\/$/, '')}/functions/v1/export-google-sheets`;
+  fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${serviceRoleKey}`,
+      apikey: serviceRoleKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  }).catch((err) => {
+    console.warn(
+      '[export-google-sheets] chained chunk failed',
+      err instanceof Error ? err.message : err,
+    );
+  });
+}
+
+export async function exportGoogleSheetsChunk(params: {
+  venues: VenueGroup[];
+  venueKeys: string[];
+  slotsByCourt: Map<string, SheetsSlot[]>;
+  courtNames: Map<string, string>;
+  courtsCount: number;
+  chunkIndex: number;
+  chunksTotal: number;
+  startRow: number;
+}): Promise<ExportChunkRunResult | null> {
+  const config = sheetsConfigEnabled();
+  const serviceAccount = parseGoogleServiceAccount();
+  if (!config || !serviceAccount) {
+    return null;
+  }
+
+  const timeZone = displayTimezone();
+  const windowDays = slotWindowDays();
+  const sheetTitle = availabilitySheetTitle();
+  const accessToken = await getGoogleAccessToken(serviceAccount);
+  const { spreadsheetId } = config;
+
+  const venueByKey = new Map(params.venues.map((v) => [v.key, v]));
+  const chunkVenues = params.venueKeys
+    .map((key) => venueByKey.get(key))
+    .filter((v): v is VenueGroup => v != null);
+
+  let sheetsCreated = 0;
+  let sheetsPruned = 0;
+  let sheetId = 0;
+
+  if (params.chunkIndex === 0) {
+    const setup = await ensureAvailabilitySheet(
       accessToken,
       spreadsheetId,
-      targetSheet.sheetId,
+      sheetTitle,
+      true,
+    );
+    sheetsCreated = setup.sheetsCreated;
+    sheetsPruned = setup.sheetsPruned;
+    sheetId = setup.sheetId;
+  } else {
+    const setup = await ensureAvailabilitySheet(
+      accessToken,
+      spreadsheetId,
+      sheetTitle,
+      false,
+    );
+    sheetId = setup.sheetId;
+  }
+
+  let row = params.startRow;
+  if (params.chunkIndex === 0) {
+    row = await writeRowsAt(
+      accessToken,
+      spreadsheetId,
+      sheetTitle,
+      row,
+      buildSheetPreambleRows(timeZone, windowDays),
     );
   }
 
   let slotsWritten = 0;
-  for (const slot of exportSlots) {
-    slotsWritten += 1;
+  for (let i = 0; i < chunkVenues.length; i++) {
+    if (params.chunkIndex > 0 || i > 0) {
+      row = await writeRowsAt(accessToken, spreadsheetId, sheetTitle, row, [[]]);
+    }
+    const section = buildVenueSectionRows(
+      chunkVenues[i],
+      params.slotsByCourt,
+      params.courtNames,
+      timeZone,
+    );
+    row = await writeRowsAt(
+      accessToken,
+      spreadsheetId,
+      sheetTitle,
+      row,
+      section,
+    );
+    for (const court of chunkVenues[i].courts) {
+      slotsWritten += params.slotsByCourt.get(court.id)?.length ?? 0;
+    }
   }
 
+  const formattingApplied = params.chunkIndex === params.chunksTotal - 1 &&
+    shouldApplyFormatting(params.venues.length, slotsWritten);
+  if (formattingApplied) {
+    await applySingleSheetFormatting(accessToken, spreadsheetId, sheetId);
+  }
+
+  const nextChunk = params.chunkIndex + 1;
+
   return {
-    spreadsheetId,
-    courts: courts.length,
-    venues: venues.length,
-    sheetsCreated,
-    sheetsUpdated: 1,
-    sheetsPruned,
-    slotsWritten,
-    slotsInExport: exportSlots.length,
-    slotWindowDays: windowDays,
-    formattingApplied,
+    result: {
+      spreadsheetId,
+      courts: params.courtsCount,
+      venues: params.venues.length,
+      sheetsCreated,
+      sheetsUpdated: 1,
+      sheetsPruned,
+      slotsWritten,
+      slotsInExport: slotsWritten,
+      slotWindowDays: windowDays,
+      formattingApplied,
+      chunksTotal: params.chunksTotal,
+      chunkIndex: params.chunkIndex,
+    },
+    nextRow: row,
+  };
+}
+
+/** @deprecated sync-courts now triggers export-google-sheets instead. */
+export async function syncCourtsToGoogleSheets(
+  _courts: SheetsCourt[],
+  _slots: SheetsSlot[],
+): Promise<GoogleSheetsSyncResult | null> {
+  const triggered = triggerGoogleSheetsExport();
+  if (!triggered) {
+    return null;
+  }
+  return {
+    spreadsheetId: sheetsConfigEnabled()!.spreadsheetId,
+    courts: _courts.length,
+    venues: 0,
+    sheetsCreated: 0,
+    sheetsUpdated: 0,
+    sheetsPruned: 0,
+    slotsWritten: 0,
+    slotsInExport: 0,
+    slotWindowDays: slotWindowDays(),
+    formattingApplied: false,
+    chunksTotal: undefined,
+    chunkIndex: 0,
   };
 }

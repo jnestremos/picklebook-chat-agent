@@ -6,6 +6,7 @@ import {
   buildVenueSheetValues,
   filterSlotsForSheetsExport,
   groupCourtsByVenue,
+  packVenueKeyChunks,
   sheetTitleForCourt,
   slotSheetColumns,
   slotStartEndFromSlot,
@@ -187,7 +188,22 @@ Deno.test('buildCombinedSheetValues stacks venues with blank separators', () => 
   assertEquals(values[13][1], 'Quezon City');
 });
 
-Deno.test('filterSlotsForSheetsExport keeps available slots in window', () => {
+Deno.test('packVenueKeyChunks splits by slot budget', () => {
+  const venues = groupCourtsByVenue([
+    { id: 'c1', name: 'Court 1', location: 'A', ...baseCourt },
+    { id: 'c2', name: 'Court 2', location: 'A', ...baseCourt },
+    { id: 'c3', name: 'Court 3', location: 'B', ...baseCourt },
+  ]);
+  const counts = new Map([
+    ['c1', 300],
+    ['c2', 300],
+    ['c3', 100],
+  ]);
+  const chunks = packVenueKeyChunks(venues, counts, 500);
+  assertEquals(chunks.length, 2);
+  assertEquals(chunks[0].length, 1);
+  assertEquals(chunks[1].length, 1);
+});
   const now = Date.now();
   const inWindow = new Date(now + 2 * 24 * 60 * 60 * 1000).toISOString();
   const outWindow = new Date(now + 10 * 24 * 60 * 60 * 1000).toISOString();

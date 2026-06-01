@@ -8,7 +8,7 @@
 //   3. TRUNCATE courts + slots (restart ids at 1)
 //   4. Batch insert courts, map scraper court.id → DB bigint id
 //   5. Batch insert slots
-//   6. Google Sheets (optional): single tab, venue sections stacked vertically
+//   6. Google Sheets (optional): fire-and-forget export-google-sheets (chunked)
 //   7. POST {COURT_SYNC_WORKER_URL}/sync/index/workflow — disabled temporarily for Sheets testing
 //
 // Secrets: SCRAPER_SERVICE_URL (public base URL — NOT localhost from Supabase cloud),
@@ -19,7 +19,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import { jsonResponse } from '../_shared/cors.ts';
-import { syncCourtsToGoogleSheets } from '../_shared/google-sheets-sync.ts';
+import { triggerGoogleSheetsExport } from '../_shared/google-sheets-sync.ts';
 
 const SCRAPER_TIMEOUT_MS = 120_000;
 const INDEX_SYNC_TRIGGER_TIMEOUT_MS = 10_000;
@@ -372,15 +372,7 @@ Deno.serve(async (req: Request) => {
     timings.slots_ms = Date.now() - slotsStarted;
 
     const sheetsStarted = Date.now();
-    let google_sheets: Awaited<ReturnType<typeof syncCourtsToGoogleSheets>> = null;
-    try {
-      google_sheets = await syncCourtsToGoogleSheets(scraperCourts, scraperSlots);
-    } catch (sheetsErr) {
-      console.warn(
-        '[sync-courts] Google Sheets sync failed',
-        sheetsErr instanceof Error ? sheetsErr.message : sheetsErr,
-      );
-    }
+    const google_sheets = triggerGoogleSheetsExport();
     timings.google_sheets_ms = Date.now() - sheetsStarted;
 
     // TEMP: Cloudflare index workflow disabled while testing Google Sheets.
