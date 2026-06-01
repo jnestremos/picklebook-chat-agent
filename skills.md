@@ -33,13 +33,15 @@ Vectorize document ids use **`courts.external_id`** and **`external_id:datetime`
   2. `rpc truncate_courts_and_slots()` — `TRUNCATE slots` + `TRUNCATE courts RESTART IDENTITY`
   3. Batch insert courts (`external_id` = scraper court id)
   4. Batch insert slots (FK to new bigint `court_id`; only `available: true`)
-  5. **`POST {COURT_SYNC_WORKER_URL}/sync/index/workflow`** with `{ "namespace": "courts" }` (10s timeout; errors logged, sync still returns `ok: true`)
+  5. **Google Sheets** (optional): `_shared/google-sheets-sync.ts` — one tab per court, readable slot grid; `_Index` tab
+  6. **`POST {COURT_SYNC_WORKER_URL}/sync/index/workflow`** with `{ "namespace": "courts" }` (10s timeout; errors logged, sync still returns `ok: true`)
 
 - **Edge Function secrets** (`supabase secrets set` or `supabase/functions/.env` locally):
   - `SCRAPER_SERVICE_URL` — scraper base URL (no path)
   - `SCRAPER_SERVICE_TOKEN` (optional)
   - `COURT_SYNC_WORKER_URL` — e.g. `https://picklebook-court-sync.estremosjoshua.workers.dev`
   - `INDEX_SYNC_SECRET` (optional) — must match court-sync Worker secret if set
+  - `GOOGLE_SHEETS_SPREADSHEET_ID` + `GOOGLE_SERVICE_ACCOUNT_JSON` (optional) — share spreadsheet with service account email
 
 - **Cron**: migration `20260527073230_schedule_sync_courts.sql`. Vault secrets `project_url` + `service_role_key` in Postgres (see `supabase/scripts/setup-vault-secrets.sql`).
 

@@ -20,10 +20,11 @@ court-booking-scraper  →  sync-courts (Edge Fn)  →  Supabase courts/slots
               chat POST /api/query  →  court-sync POST /query
 ```
 
-After each successful `sync-courts` run, the Edge Function triggers
-`POST {COURT_SYNC_WORKER_URL}/sync/index/workflow` with `{ "namespace": "courts" }`
-(10s timeout, fire-and-forget — Vectorize rebuild is async). If the trigger fails,
-`sync-courts` still returns `ok: true`.
+After each successful `sync-courts` run:
+
+1. **Google Sheets** (optional) — one tab per court, slots in a readable table; `_Index` lists all courts.
+2. **Vectorize** — `POST {COURT_SYNC_WORKER_URL}/sync/index/workflow` with `{ "namespace": "courts" }`
+   (10s timeout; rebuild is async). If either optional step fails, `sync-courts` still returns `ok: true`.
 
 Vectorize ids use **`courts.external_id`** and slot composite keys — not bigint `courts.id` /
 `slots.id` (those reset on every truncate).
@@ -66,6 +67,20 @@ pnpm dev                # chat UI
 | `SCRAPER_SERVICE_TOKEN` | no | Bearer token for scraper |
 | `COURT_SYNC_WORKER_URL` | yes (prod) | e.g. `https://picklebook-court-sync.estremosjoshua.workers.dev` |
 | `INDEX_SYNC_SECRET` | no | Must match court-sync Worker if set |
+| `GOOGLE_SHEETS_SPREADSHEET_ID` | no | Spreadsheet ID from the URL |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | no | GCP service account key JSON (Sheets API enabled) |
+| `GOOGLE_SHEETS_TIMEZONE` | no | Default `Asia/Manila` for date columns |
+| `GOOGLE_SHEETS_PRUNE_ORPHANS` | no | `true` to delete tabs for courts no longer in scrape |
+
+### Google Sheets setup
+
+1. Create a spreadsheet in Google Drive.
+2. In [Google Cloud Console](https://console.cloud.google.com/), create a service account and enable **Google Sheets API**.
+3. Download the JSON key → set `GOOGLE_SERVICE_ACCOUNT_JSON` (entire file as one secret).
+4. Copy the spreadsheet ID from the URL (`/d/<ID>/edit`) → `GOOGLE_SHEETS_SPREADSHEET_ID`.
+5. **Share the spreadsheet** with the service account email (`…@….iam.gserviceaccount.com`) as **Editor**.
+
+Each sync refreshes **`_Index`** plus **one sheet per court** (name, location, then columns: Date, Day, Time slot, Start, End, Book link).
 
 Also set Vault entries `project_url` and `service_role_key` in Postgres for pg_cron
 (see `supabase/scripts/setup-vault-secrets.sql`).

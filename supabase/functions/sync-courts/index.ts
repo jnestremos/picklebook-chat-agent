@@ -8,15 +8,18 @@
 //   3. TRUNCATE courts + slots (restart ids at 1)
 //   4. Batch insert courts, map scraper court.id → DB bigint id
 //   5. Batch insert slots
-//   6. POST {COURT_SYNC_WORKER_URL}/sync/index/workflow — rebuild Vectorize (async; non-blocking)
+//   6. Google Sheets (optional): one tab per court, readable slot table
+//   7. POST {COURT_SYNC_WORKER_URL}/sync/index/workflow — disabled temporarily for Sheets testing
 //
 // Secrets: SCRAPER_SERVICE_URL (public base URL — NOT localhost from Supabase cloud),
 //           SCRAPER_SERVICE_TOKEN (optional),
 //           COURT_SYNC_WORKER_URL (picklebook-court-sync Worker base URL),
-//           INDEX_SYNC_SECRET (optional; must match Worker if set)
+//           INDEX_SYNC_SECRET (optional; must match Worker if set),
+//           GOOGLE_SHEETS_SPREADSHEET_ID + GOOGLE_SERVICE_ACCOUNT_JSON (optional Sheets export)
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import { jsonResponse } from '../_shared/cors.ts';
+import { syncCourtsToGoogleSheets } from '../_shared/google-sheets-sync.ts';
 
 const SCRAPER_TIMEOUT_MS = 120_000;
 const INDEX_SYNC_TRIGGER_TIMEOUT_MS = 10_000;
@@ -368,7 +371,20 @@ Deno.serve(async (req: Request) => {
     }
     timings.slots_ms = Date.now() - slotsStarted;
 
-    await triggerVectorizeIndex();
+    const sheetsStarted = Date.now();
+    let google_sheets: Awaited<ReturnType<typeof syncCourtsToGoogleSheets>> = null;
+    try {
+      google_sheets = await syncCourtsToGoogleSheets(scraperCourts, scraperSlots);
+    } catch (sheetsErr) {
+      console.warn(
+        '[sync-courts] Google Sheets sync failed',
+        sheetsErr instanceof Error ? sheetsErr.message : sheetsErr,
+      );
+    }
+    timings.google_sheets_ms = Date.now() - sheetsStarted;
+
+    // TEMP: Cloudflare index workflow disabled while testing Google Sheets.
+    // await triggerVectorizeIndex();
 
     return jsonResponse({
       ok: true,
@@ -377,6 +393,7 @@ Deno.serve(async (req: Request) => {
       slots_inserted: slotRows.length,
       slots_dropped_no_court: droppedNoCourt,
       slots_dropped_unavailable: droppedUnavailable,
+      google_sheets,
       timings,
       elapsed_ms: Date.now() - startedAt,
     });
