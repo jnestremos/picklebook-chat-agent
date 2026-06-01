@@ -29,10 +29,24 @@ export type SheetsSlot = {
 export type GoogleSheetsSyncResult = {
   spreadsheetId: string;
   courts: number;
+  venues: number;
   sheetsCreated: number;
   sheetsUpdated: number;
   sheetsPruned: number;
   slotsWritten: number;
+  /** Slots after GOOGLE_SHEETS_SLOT_WINDOW_DAYS filter (before sheet build). */
+  slotsInExport: number;
+  slotWindowDays: number;
+  formattingApplied: boolean;
+};
+
+export type VenueGroup = {
+  key: string;
+  label: string;
+  location: string | null;
+  source: string | null;
+  booking_url: string | null;
+  courts: SheetsCourt[];
 };
 
 type SheetMeta = {
@@ -57,17 +71,125 @@ function pruneOrphanSheets(): boolean {
   return v === '1' || v === 'true' || v === 'yes';
 }
 
+/** Only export slots starting within this many days (keeps Edge CPU under Supabase limits). */
+function slotWindowDays(): number {
+  const raw = Deno.env.get('GOOGLE_SHEETS_SLOT_WINDOW_DAYS')?.trim();
+  if (raw && Number.isFinite(Number(raw))) {
+    return Math.min(30, Math.max(1, Math.floor(Number(raw))));
+  }
+  return 7;
+}
+
+function envFlagTrue(name: string): boolean {
+  const v = Deno.env.get(name)?.trim().toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes';
+}
+
+/** Formatting many tabs burns Edge CPU; skip unless explicitly enabled. */
+function shouldApplyFormatting(venues: number, slotsInExport: number): boolean {
+  if (envFlagTrue('GOOGLE_SHEETS_APPLY_FORMATTING')) {
+    return true;
+  }
+  if (envFlagTrue('GOOGLE_SHEETS_SKIP_FORMATTING')) {
+    return false;
+  }
+  return venues <= 40 && slotsInExport <= 3000;
+}
+
+export function filterSlotsForSheetsExport(
+  slots: SheetsSlot[],
+  windowDays: number,
+): SheetsSlot[] {
+  const now = Date.now();
+  const endMs = now + windowDays * 24 * 60 * 60 * 1000;
+  return slots.filter((slot) => {
+    if (!slot.available) {
+      return false;
+    }
+    const t = Date.parse(slot.datetime);
+    return !Number.isNaN(t) && t >= now - 60_000 && t <= endMs;
+  });
+}
+
+/** Stable grouping key: same location or booking page → one venue tab. */
+export function venueKeyForCourt(court: SheetsCourt): string {
+  const loc = court.location?.trim().toLowerCase();
+  if (loc) {
+    return `loc:${loc}`;
+  }
+
+  const url = court.booking_url?.trim();
+  if (url) {
+    try {
+      const parsed = new URL(url);
+      return `url:${parsed.origin}${parsed.pathname}`.toLowerCase();
+    } catch {
+      return `url:${url.toLowerCase()}`;
+    }
+  }
+
+  return `court:${court.id}`;
+}
+
+/** Human-readable venue name for tab title and sheet header. */
+export function venueLabelForCourt(court: SheetsCourt): string {
+  const location = court.location?.trim();
+  if (location) {
+    return location;
+  }
+
+  const stripped = court.name
+    .replace(/\s*[-–|]\s*(court\s*)?\d+.*$/i, '')
+    .replace(/\s*\(\s*court\s*\d+\s*\)\s*$/i, '')
+    .trim();
+  return stripped || court.name;
+}
+
+export function groupCourtsByVenue(courts: SheetsCourt[]): VenueGroup[] {
+  const map = new Map<string, VenueGroup>();
+
+  for (const court of courts) {
+    const key = venueKeyForCourt(court);
+    let group = map.get(key);
+    if (!group) {
+      group = {
+        key,
+        label: venueLabelForCourt(court),
+        location: court.location,
+        source: court.source,
+        booking_url: court.booking_url,
+        courts: [],
+      };
+      map.set(key, group);
+    }
+    group.courts.push(court);
+  }
+
+  for (const group of map.values()) {
+    if (group.courts.length > 1) {
+      const withLocation = group.courts.find((c) => c.location?.trim());
+      if (withLocation) {
+        group.label = venueLabelForCourt(withLocation);
+        group.location = withLocation.location;
+      }
+    }
+    group.courts.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  return [...map.values()].sort((a, b) => a.label.localeCompare(b.label));
+}
+
 /** Sheet tab title: unique, ≤100 chars, no \\ / ? * [ ] */
-export function sheetTitleForCourt(
-  court: SheetsCourt,
+export function sheetTitleForVenue(
+  label: string,
   usedTitles: Set<string>,
 ): string {
-  let base = court.name
+  let base = label
     .replace(/[\\/?*[\]]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   if (!base) {
-    base = court.id.replace(/[\\/?*[\]]/g, '_').slice(0, 60);
+    base = 'Venue';
   }
   base = base.slice(0, 85);
 
@@ -80,6 +202,14 @@ export function sheetTitleForCourt(
   }
   usedTitles.add(title);
   return title;
+}
+
+/** @deprecated Use sheetTitleForVenue — kept for tests that pass court.name directly. */
+export function sheetTitleForCourt(
+  court: SheetsCourt,
+  usedTitles: Set<string>,
+): string {
+  return sheetTitleForVenue(venueLabelForCourt(court), usedTitles);
 }
 
 export function escapeSheetRangeTitle(title: string): string {
@@ -111,6 +241,15 @@ function formatInTz(iso: string, timeZone: string): {
   return { date, day, time };
 }
 
+/** Avoid Intl per slot — Edge CPU limit is ~2s for large exports. */
+function formatInTzFast(iso: string): { date: string; day: string; time: string } {
+  return {
+    date: iso.slice(0, 10),
+    day: '—',
+    time: iso.slice(11, 16),
+  };
+}
+
 function bookingLinkFormula(url: string | null): string {
   if (!url?.trim()) {
     return '';
@@ -119,10 +258,79 @@ function bookingLinkFormula(url: string | null): string {
   return `=HYPERLINK("${safe}","Book")`;
 }
 
+export function buildVenueSheetValues(
+  venue: VenueGroup,
+  slotsByCourt: Map<string, SheetsSlot[]>,
+  courtNames: Map<string, string>,
+  timeZone: string,
+  fastDates = false,
+): string[][] {
+  const updated = new Intl.DateTimeFormat('en-PH', {
+    timeZone,
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date());
+
+  type SlotRow = { courtName: string; slot: SheetsSlot };
+  const allSlots: SlotRow[] = [];
+  for (const court of venue.courts) {
+    const courtName = courtNames.get(court.id) ?? court.name;
+    for (const slot of slotsByCourt.get(court.id) ?? []) {
+      if (slot.available) {
+        allSlots.push({ courtName, slot });
+      }
+    }
+  }
+
+  allSlots.sort((a, b) => {
+    const byTime = a.slot.datetime.localeCompare(b.slot.datetime);
+    return byTime !== 0 ? byTime : a.courtName.localeCompare(b.courtName);
+  });
+
+  const formatSlot = fastDates ? formatInTzFast : (iso: string) => formatInTz(iso, timeZone);
+
+  const courtSummary = venue.courts.map((c) => c.name).join(', ');
+
+  const rows: string[][] = [
+    ['Venue', venue.label],
+    ['Courts', courtSummary || '—'],
+    ['Location', venue.location ?? '—'],
+    ['Source', venue.source ?? '—'],
+    ['Booking page', venue.booking_url ?? '—'],
+    ['Last sync', `${updated} (${timeZone})`],
+    [],
+    ['Court', 'Date', 'Day', 'Time slot', 'Start', 'End', 'Book'],
+  ];
+
+  for (const { courtName, slot } of allSlots) {
+    const start = formatSlot(slot.datetime);
+    const end = slot.datetime_end
+      ? (fastDates ? formatInTzFast(slot.datetime_end).time : formatInTz(slot.datetime_end, timeZone).time)
+      : '—';
+    rows.push([
+      courtName,
+      start.date,
+      start.day,
+      slot.time_slot?.trim() || start.time,
+      start.time,
+      end,
+      bookingLinkFormula(slot.booking_url),
+    ]);
+  }
+
+  if (allSlots.length === 0) {
+    rows.push(['(no available slots in this sync)', '', '', '', '', '', '']);
+  }
+
+  return rows;
+}
+
+/** @deprecated Use buildVenueSheetValues for production export. */
 export function buildCourtSheetValues(
   court: SheetsCourt,
   slots: SheetsSlot[],
   timeZone: string,
+  fastDates = false,
 ): string[][] {
   const updated = new Intl.DateTimeFormat('en-PH', {
     timeZone,
@@ -133,6 +341,8 @@ export function buildCourtSheetValues(
   const sorted = [...slots]
     .filter((s) => s.available)
     .sort((a, b) => a.datetime.localeCompare(b.datetime));
+
+  const formatSlot = fastDates ? formatInTzFast : (iso: string) => formatInTz(iso, timeZone);
 
   const rows: string[][] = [
     ['Court', court.name],
@@ -146,9 +356,9 @@ export function buildCourtSheetValues(
   ];
 
   for (const slot of sorted) {
-    const start = formatInTz(slot.datetime, timeZone);
+    const start = formatSlot(slot.datetime);
     const end = slot.datetime_end
-      ? formatInTz(slot.datetime_end, timeZone).time
+      ? (fastDates ? formatInTzFast(slot.datetime_end).time : formatInTz(slot.datetime_end, timeZone).time)
       : '—';
     rows.push([
       start.date,
@@ -168,8 +378,8 @@ export function buildCourtSheetValues(
 }
 
 function buildIndexSheetValues(
-  courts: SheetsCourt[],
-  courtToTitle: Map<string, string>,
+  venues: VenueGroup[],
+  venueToTitle: Map<string, string>,
   slotCounts: Map<string, number>,
   timeZone: string,
 ): string[][] {
@@ -182,18 +392,22 @@ function buildIndexSheetValues(
   const rows: string[][] = [
     ['Picklebook — court availability'],
     [`Last sync: ${updated} (${timeZone})`],
-    ['Open a tab below — one sheet per court.'],
+    ['Open a tab below — one sheet per venue (courts grouped inside).'],
     [],
-    ['Court', 'Location', 'Available slots', 'Sheet tab'],
+    ['Venue', 'Location', 'Courts', 'Available slots', 'Sheet tab'],
   ];
 
-  const sorted = [...courts].sort((a, b) => a.name.localeCompare(b.name));
-  for (const court of sorted) {
+  for (const venue of venues) {
+    const slots = venue.courts.reduce(
+      (sum, court) => sum + (slotCounts.get(court.id) ?? 0),
+      0,
+    );
     rows.push([
-      court.name,
-      court.location ?? '—',
-      String(slotCounts.get(court.id) ?? 0),
-      courtToTitle.get(court.id) ?? '—',
+      venue.label,
+      venue.location ?? '—',
+      String(venue.courts.length),
+      String(slots),
+      venueToTitle.get(venue.key) ?? '—',
     ]);
   }
 
@@ -298,17 +512,18 @@ async function applyReadableFormatting(
   accessToken: string,
   spreadsheetId: string,
   sheetMetas: SheetMeta[],
-  courtTitles: Set<string>,
+  venueTitles: Set<string>,
 ): Promise<void> {
   const requests: Record<string, unknown>[] = [];
 
   for (const { sheetId, title } of sheetMetas) {
-    if (title !== INDEX_SHEET_TITLE && !courtTitles.has(title)) {
+    if (title !== INDEX_SHEET_TITLE && !venueTitles.has(title)) {
       continue;
     }
 
     const headerRow = title === INDEX_SHEET_TITLE ? 4 : 7;
     const frozenRows = title === INDEX_SHEET_TITLE ? 5 : 8;
+    const columnCount = title === INDEX_SHEET_TITLE ? 5 : 7;
 
     requests.push({
       repeatCell: {
@@ -317,7 +532,7 @@ async function applyReadableFormatting(
           startRowIndex: headerRow,
           endRowIndex: headerRow + 1,
           startColumnIndex: 0,
-          endColumnIndex: title === INDEX_SHEET_TITLE ? 4 : 6,
+          endColumnIndex: columnCount,
         },
         cell: {
           userEnteredFormat: {
@@ -343,7 +558,7 @@ async function applyReadableFormatting(
           sheetId,
           dimension: 'COLUMNS',
           startIndex: 0,
-          endIndex: title === INDEX_SHEET_TITLE ? 4 : 6,
+          endIndex: columnCount,
         },
       },
     });
@@ -373,21 +588,23 @@ export async function syncCourtsToGoogleSheets(
   }
 
   const timeZone = displayTimezone();
+  const windowDays = slotWindowDays();
+  const exportSlots = filterSlotsForSheetsExport(slots, windowDays);
   const accessToken = await getGoogleAccessToken(serviceAccount);
   const { spreadsheetId } = config;
 
+  const venues = groupCourtsByVenue(courts);
+  const courtNames = new Map(courts.map((c) => [c.id, c.name]));
+
   const usedTitles = new Set<string>([INDEX_SHEET_TITLE]);
-  const courtToTitle = new Map<string, string>();
-  for (const court of courts) {
-    courtToTitle.set(court.id, sheetTitleForCourt(court, usedTitles));
+  const venueToTitle = new Map<string, string>();
+  for (const venue of venues) {
+    venueToTitle.set(venue.key, sheetTitleForVenue(venue.label, usedTitles));
   }
 
   const slotCounts = new Map<string, number>();
   const slotsByCourt = new Map<string, SheetsSlot[]>();
-  for (const slot of slots) {
-    if (!slot.available) {
-      continue;
-    }
+  for (const slot of exportSlots) {
     const list = slotsByCourt.get(slot.court_scraper_id) ?? [];
     list.push(slot);
     slotsByCourt.set(slot.court_scraper_id, list);
@@ -408,7 +625,7 @@ export async function syncCourtsToGoogleSheets(
     sheetsCreated += 1;
   }
 
-  for (const title of courtToTitle.values()) {
+  for (const title of venueToTitle.values()) {
     if (!titleToMeta.has(title)) {
       addRequests.push({ addSheet: { properties: { title } } });
       sheetsCreated += 1;
@@ -424,7 +641,7 @@ export async function syncCourtsToGoogleSheets(
     titleToMeta.set(s.title, s);
   }
 
-  const desiredTitles = new Set(courtToTitle.values());
+  const desiredTitles = new Set(venueToTitle.values());
   let sheetsPruned = 0;
   if (pruneOrphanSheets()) {
     const deleteRequests: Record<string, unknown>[] = [];
@@ -444,20 +661,29 @@ export async function syncCourtsToGoogleSheets(
   }
 
   const valueUpdates: { range: string; values: string[][] }[] = [];
+  const formattingApplied = shouldApplyFormatting(venues.length, exportSlots.length);
+  const fastDates = !formattingApplied;
 
   valueUpdates.push({
     range: `${escapeSheetRangeTitle(INDEX_SHEET_TITLE)}!A1`,
-    values: buildIndexSheetValues(courts, courtToTitle, slotCounts, timeZone),
+    values: buildIndexSheetValues(venues, venueToTitle, slotCounts, timeZone),
   });
 
   let slotsWritten = 0;
-  for (const court of courts) {
-    const title = courtToTitle.get(court.id)!;
-    const courtSlots = slotsByCourt.get(court.id) ?? [];
-    slotsWritten += courtSlots.length;
+  for (const venue of venues) {
+    const title = venueToTitle.get(venue.key)!;
+    for (const court of venue.courts) {
+      slotsWritten += slotsByCourt.get(court.id)?.length ?? 0;
+    }
     valueUpdates.push({
       range: `${escapeSheetRangeTitle(title)}!A1`,
-      values: buildCourtSheetValues(court, courtSlots, timeZone),
+      values: buildVenueSheetValues(
+        venue,
+        slotsByCourt,
+        courtNames,
+        timeZone,
+        fastDates,
+      ),
     });
   }
 
@@ -469,20 +695,26 @@ export async function syncCourtsToGoogleSheets(
     );
   }
 
-  const courtTitleSet = new Set(courtToTitle.values());
-  await applyReadableFormatting(
-    accessToken,
-    spreadsheetId,
-    sheetMetas,
-    courtTitleSet,
-  );
+  if (formattingApplied) {
+    const venueTitleSet = new Set(venueToTitle.values());
+    await applyReadableFormatting(
+      accessToken,
+      spreadsheetId,
+      sheetMetas,
+      venueTitleSet,
+    );
+  }
 
   return {
     spreadsheetId,
     courts: courts.length,
+    venues: venues.length,
     sheetsCreated,
-    sheetsUpdated: courts.length,
+    sheetsUpdated: venues.length,
     sheetsPruned,
     slotsWritten,
+    slotsInExport: exportSlots.length,
+    slotWindowDays: windowDays,
+    formattingApplied,
   };
 }
