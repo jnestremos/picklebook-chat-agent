@@ -8,20 +8,19 @@
 //   3. TRUNCATE courts + slots (restart ids at 1)
 //   4. Batch insert courts, map scraper court.id → DB bigint id
 //   5. Batch insert slots
-//   6. Google Sheets (optional): scraper exportSheets on same /api/scrape response (court-booking-scraper)
-//   7. POST {COURT_SYNC_WORKER_URL}/sync/index/workflow — disabled temporarily for Sheets testing
+//   6. POST {COURT_SYNC_WORKER_URL}/sync/index/workflow — incremental Vectorize index (async trigger)
+//   (Google Sheets export on court-booking-scraper is disabled for now)
 //
 // Secrets: SCRAPER_SERVICE_URL (public base URL — NOT localhost from Supabase cloud),
 //           SCRAPER_SERVICE_TOKEN (optional),
 //           COURT_SYNC_WORKER_URL (picklebook-court-sync Worker base URL),
-//           INDEX_SYNC_SECRET (optional; must match Worker if set),
-//           GOOGLE_SHEETS_* secrets live on picklebook-court-sync Worker (not Supabase Edge)
+//           INDEX_SYNC_SECRET (optional; must match Worker if set)
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 import { jsonResponse } from '../_shared/cors.ts';
 
-/** Scrape + Google Sheets export on Render can exceed 2 minutes. */
-const SCRAPER_TIMEOUT_MS = 600_000;
+/** Full scrape (all venues, 30 days) can take ~2 minutes on Render. */
+const SCRAPER_TIMEOUT_MS = 180_000;
 const INDEX_SYNC_TRIGGER_TIMEOUT_MS = 10_000;
 
 async function triggerVectorizeIndex(): Promise<void> {
@@ -86,7 +85,6 @@ type ScraperSlot = {
 type ScrapePayload = {
   courts: ScraperCourt[];
   slots: ScraperSlot[];
-  google_sheets?: unknown;
 };
 
 function asTrimmedString(v: unknown): string | null {
@@ -192,12 +190,7 @@ async function fetchScrapePayload(): Promise<ScrapePayload> {
       ...(isNgrok ? { 'ngrok-skip-browser-warning': 'true' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({
-      all: true,
-      maxDays: 30,
-      exportSheets: true,
-      sheetsWindowDays: 7,
-    }),
+    body: JSON.stringify({ all: true, maxDays: 30 }),
     signal: AbortSignal.timeout(SCRAPER_TIMEOUT_MS),
   });
 
@@ -239,11 +232,7 @@ async function fetchScrapePayload(): Promise<ScrapePayload> {
     if (parsed) slots.push(parsed);
   }
 
-  return {
-    courts,
-    slots,
-    google_sheets: obj.google_sheets ?? null,
-  };
+  return { courts, slots };
 }
 
 type CourtInsertRow = {
@@ -299,11 +288,8 @@ Deno.serve(async (req: Request) => {
     });
 
     const scrapeStarted = Date.now();
-    const {
-      courts: scraperCourts,
-      slots: scraperSlots,
-      google_sheets,
-    } = await fetchScrapePayload();
+    const { courts: scraperCourts, slots: scraperSlots } =
+      await fetchScrapePayload();
     timings.scrape_ms = Date.now() - scrapeStarted;
 
     const CHUNK = 100;
@@ -384,8 +370,9 @@ Deno.serve(async (req: Request) => {
     }
     timings.slots_ms = Date.now() - slotsStarted;
 
-    // TEMP: Cloudflare index workflow disabled while testing Google Sheets.
-    // await triggerVectorizeIndex();
+    const indexStarted = Date.now();
+    await triggerVectorizeIndex();
+    timings.index_trigger_ms = Date.now() - indexStarted;
 
     return jsonResponse({
       ok: true,
@@ -394,7 +381,6 @@ Deno.serve(async (req: Request) => {
       slots_inserted: slotRows.length,
       slots_dropped_no_court: droppedNoCourt,
       slots_dropped_unavailable: droppedUnavailable,
-      google_sheets,
       timings,
       elapsed_ms: Date.now() - startedAt,
     });

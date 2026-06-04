@@ -22,9 +22,8 @@ court-booking-scraper  →  sync-courts (Edge Fn)  →  Supabase courts/slots
 
 After each successful `sync-courts` run:
 
-1. **Google Sheets** (optional) — `sync-courts` calls scraper with `exportSheets: true` on **`POST /api/scrape`**. Google secrets live on **court-booking-scraper** (Render `.env`), not the Worker.
-2. **Vectorize** — `POST {COURT_SYNC_WORKER_URL}/sync/index/workflow` with `{ "namespace": "courts" }`
-   (10s timeout; rebuild is async). If either optional step fails, `sync-courts` still returns `ok: true`.
+1. **Vectorize** — after DB reload, `sync-courts` calls `POST {COURT_SYNC_WORKER_URL}/sync/index/workflow` (10s trigger timeout; index runs async on Cloudflare). Failures are logged; `sync-courts` still returns `ok: true`.
+2. **Google Sheets** — disabled for now (export code remains on **court-booking-scraper** when re-enabled).
 
 Vectorize ids use **`courts.external_id`** and slot composite keys — not bigint `courts.id` /
 `slots.id` (those reset on every truncate).
